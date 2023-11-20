@@ -6,7 +6,7 @@ public class UserStats {
     private int gamesPlayed;
     private int gamesWon;
     private int gamesLost;
-    // Other attributes related to user stats can be added here
+
 
     public UserStats() {
         this.coins = 20; // Every user starts with 20 coins
@@ -24,15 +24,22 @@ public class UserStats {
         this.coins -= coins;
     }
 
-    public void updateEloScore(boolean win) {
-        if(win) {
+    public boolean updateEloScore(boolean win) {
+        // Let's assume you don't want the ELO score to go below zero
+        if (win) {
             this.eloScore += 3;
-            gamesWon++;
+            this.gamesWon++;
         } else {
+            // Check if the ELO score would go below zero after losing
+            if (this.eloScore - 5 < 0) {
+                // If it does, you might decide not to change the score and return false
+                return false; // Update not successful because it would result in a negative score
+            }
             this.eloScore -= 5;
-            gamesLost++;
+            this.gamesLost++;
         }
-        gamesPlayed++;
+        this.gamesPlayed++;
+        return true; // Update successful
     }
 
     public int getCoins() {
