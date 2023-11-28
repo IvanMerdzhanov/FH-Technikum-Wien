@@ -5,6 +5,7 @@ import mtcg.models.*;
 public class Main {
     public static void main(String[] args) {
 
+        //It's for for the simulation
         User user1 = new User("Player1", "pass1");
         User user2 = new User("Player2", "pass2");
 
@@ -21,15 +22,21 @@ public class Main {
         cards[8] = new SpellCard("S4", "Wind Gust", 40, ElementType.NORMAL);
         cards[9] = new SpellCard("S5", "Earthquake", 55, ElementType.NORMAL);
 
-
+        //It's for adding card to the deck for the simulation. Later do be changed
         for (int i = 0; i < 5; i++) {
             user1.addCardtoDeck(cards[i]);
             user2.addCardtoDeck(cards[i + 5]);
         }
 
+        User user3 = new User("Player1", "pass1");
+        User user4 = new User("Player2", "pass2");
+        user3.addCardtoDeck(new MonsterCard("M5", "Knight", 15, ElementType.NORMAL));
+        user4.addCardtoDeck(new SpellCard("S1", "WaterSpell", 10, ElementType.WATER));
 
 
-        // Placeholder for future functionality
-        // simulateBattle(user1, user2);
+
+
+        Battle battle = new Battle(user3, user4);
+        battle.startBattle();
     }
 }

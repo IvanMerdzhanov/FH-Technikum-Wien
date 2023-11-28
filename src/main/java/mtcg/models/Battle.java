@@ -17,7 +17,7 @@ public class Battle {
 
     public void startBattle() {
         // Example loop for multiple rounds (limit based on game rules)
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < 1; i++) {
             Round round = new Round(playerOne, getRandomCardFromDeck(playerOne), playerTwo, getRandomCardFromDeck(playerTwo));
             round.executeRound();
             // Additional battle logic (e.g., handling round results, updating stats)

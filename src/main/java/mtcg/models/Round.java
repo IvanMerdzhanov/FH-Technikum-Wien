@@ -17,13 +17,9 @@ public class Round {
         double playerOneDamage = playerOneCard.getDamage();
         double playerTwoDamage = playerTwoCard.getDamage();
 
-        // Apply elemental effectiveness if at least one card is a spell
-        if (playerOneCard instanceof SpellCard || playerTwoCard instanceof SpellCard) {
-            playerOneDamage = calculateElementalDamage(playerOneCard, playerTwoCard);
-            playerTwoDamage = calculateElementalDamage(playerTwoCard, playerOneCard);
-        }
+        System.out.println(String.format("The fight is between %s - %.0f and %s - %.0f", playerOneCard.getName(), playerOneDamage, playerTwoCard.getName(), playerTwoDamage));
 
-        // Apply special rules
+// Apply special rules first
         if (specialRuleApplies(playerOneCard, playerTwoCard)) {
             playerOneDamage = 0; // Adjust damage based on special rules
         }
@@ -31,15 +27,30 @@ public class Round {
             playerTwoDamage = 0; // Adjust damage based on special rules
         }
 
+// Apply elemental effectiveness only if no special rules were applied
+        if (playerOneDamage > 0 && playerTwoDamage > 0) {
+            if (playerOneCard instanceof SpellCard || playerTwoCard instanceof SpellCard) {
+                playerOneDamage = calculateElementalDamage(playerOneCard, playerTwoCard);
+                playerTwoDamage = calculateElementalDamage(playerTwoCard, playerOneCard);
+            }
+        }
+
+
+        System.out.println(String.format("Now the DAMAGES are %.0f VS %.0f", playerOneDamage, playerTwoDamage));
         // Determine the round winner
         if (playerOneDamage > playerTwoDamage) {
             // Player One wins the round
+            System.out.println("Player 1 wins");
+            System.out.println(String.format("%s beats %s", playerOneCard.getName(), playerTwoCard.getName()));
             transferCardToStack(playerTwo, playerOne, playerTwoCard); // Transfer card from Player Two's deck to Player One's stack
         } else if (playerTwoDamage > playerOneDamage) {
             // Player Two wins the round
+            System.out.println("Player 2 wins");
+            System.out.println(String.format("%s beats %s", playerTwoCard.getName(), playerOneCard.getName()));
             transferCardToStack(playerOne, playerTwo, playerOneCard); // Transfer card from Player One's deck to Player Two's stack
         } else {
             // It's a draw
+            System.out.println("It's Draw");
         }
 
         // Other round logic (like transferring defeated card, updating stats, etc.)
@@ -91,7 +102,5 @@ public class Round {
         fromUser.getDeck().remove(card);
         toUser.getStack().add(card);
     }
-
-
 
 }
