@@ -7,6 +7,11 @@ public class User {
     private String username;
     private String password;
     private int coins;
+    private List<Card> stack;  // Collection of all the user's cards
+    private List<Card> deck;   // Selected 4 cards for battling
+    private UserStats userStats;
+    //private String token; ОЩЕ НЕ ЗНАМ КАКВО Е ТОВА
+
 
     // Constructor
     public User(String username, String password) {
@@ -16,8 +21,13 @@ public class User {
         this.stack = new ArrayList<>();
         this.deck = new ArrayList<>();
         this.userStats = new UserStats();
-        this.token = "";  // This can be set upon successful login/registration
+      //  this.token = "";  // This can be set upon successful login/registration
     }
+
+    public void addCardtoDeck(Card card){
+        deck.add(card);
+    }
+    public void removeCardFromDeck(){}
 
     public String getUsername() {
         return username;
@@ -67,17 +77,8 @@ public class User {
         this.userStats = userStats;
     }
 
-    public String getToken() {
-        return token;
-    }
+    //public String getToken() {return token;}
 
-    public void setToken(String token) {
-        this.token = token;
-    }
-
-    private List<Card> stack;  // Collection of all the user's cards
-    private List<Card> deck;   // Selected 4 cards for battling
-    private UserStats userStats;
-    private String token;
+    //public void setToken(String token) {this.token = token;}
 
 }

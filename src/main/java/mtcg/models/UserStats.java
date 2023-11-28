@@ -1,7 +1,6 @@
 package mtcg.models;
 
 public class UserStats {
-    private int coins;
     private int eloScore;
     private int gamesPlayed;
     private int gamesWon;
@@ -9,20 +8,12 @@ public class UserStats {
 
 
     public UserStats() {
-        this.coins = 20; // Every user starts with 20 coins
         this.eloScore = 100; // Starting ELO score is 100
         this.gamesPlayed = 0;
         this.gamesWon = 0;
         this.gamesLost = 0;
     }
 
-    public void deductCoins(int coins) {
-        if(this.coins - coins < 0) {
-            System.out.println("Insufficient coins.");
-            return;
-        }
-        this.coins -= coins;
-    }
 
     public boolean updateEloScore(boolean win) {
         // Let's assume you don't want the ELO score to go below zero
@@ -42,13 +33,6 @@ public class UserStats {
         return true; // Update successful
     }
 
-    public int getCoins() {
-        return coins;
-    }
-
-    public void setCoins(int coins) {
-        this.coins = coins;
-    }
 
     public int getEloScore() {
         return eloScore;
