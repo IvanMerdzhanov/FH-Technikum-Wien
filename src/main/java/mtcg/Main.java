@@ -1,9 +1,13 @@
 package mtcg;
 
+import mtcg.server.database.DatabaseConnector;
 import mtcg.models.*;
 
 public class Main {
     public static void main(String[] args) {
+
+        DatabaseConnector.connect();
+        DatabaseConnector.executeQuery("SELECT * FROM users");
 
         //It's for for the simulation
         User user1 = new User("Player1", "pass1");
@@ -28,15 +32,12 @@ public class Main {
             user2.addCardtoDeck(cards[i + 5]);
         }
 
-        User user3 = new User("Player1", "pass1");
+        /* User user3 = new User("Player1", "pass1");
         User user4 = new User("Player2", "pass2");
         user3.addCardtoDeck(new MonsterCard("M5", "Knight", 15, ElementType.NORMAL));
         user4.addCardtoDeck(new SpellCard("S1", "WaterSpell", 10, ElementType.WATER));
 
-
-
-
         Battle battle = new Battle(user3, user4);
-        battle.startBattle();
+        battle.startBattle();*/
     }
 }
