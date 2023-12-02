@@ -47,24 +47,19 @@ public class UserController {
     }
 
     private HttpResponse handleLogin(HttpRequest request, HttpResponse response) {
-        // Extract login details from request
-        // Call userService.loginUser(...)
-        // Set appropriate status and body in response
-        // Return response
-
-        // Extract registration details from request (mocked for now)
+        // Extract login details from request (mocked for now)
         String username = "exampleUser";
         String password = "examplePassword";
 
-        // Call userService.registerUser() (mocked response)
-        boolean isRegistered = userService.registerUser(username, password);
+        // Call userService.loginUser() (mocked response)
+        boolean isLoggedIn = userService.loginUser(username, password) != null;
 
-        if (isRegistered) {
+        if (isLoggedIn) {
             response.setStatus(HttpStatus.OK);
-            response.setBody("User registered successfully");
+            response.setBody("User logged in successfully");
         } else {
             response.setStatus(HttpStatus.BAD_REQUEST);
-            response.setBody("Registration failed");
+            response.setBody("Login failed");
         }
 
         return response;

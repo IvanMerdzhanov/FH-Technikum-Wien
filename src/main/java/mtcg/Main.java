@@ -1,7 +1,8 @@
 package mtcg;
 
-import mtcg.server.database.DatabaseConnector;
+import mtcg.server.core.Server;
 import mtcg.models.*;
+import mtcg.server.database.DatabaseConnector;
 
 public class Main {
     public static void main(String[] args) {
@@ -31,6 +32,13 @@ public class Main {
             user1.addCardtoDeck(cards[i]);
             user2.addCardtoDeck(cards[i + 5]);
         }
+
+        // Specify the port on which the server should listen
+        int serverPort = 8000; // Update this to your desired port
+
+        // Create and start the server from the server.core package
+        Server server = new Server(serverPort);
+        server.start();
 
         /* User user3 = new User("Player1", "pass1");
         User user4 = new User("Player2", "pass2");
