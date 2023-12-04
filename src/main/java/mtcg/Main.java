@@ -1,51 +1,17 @@
 package mtcg;
 
 import mtcg.server.core.Server;
-import mtcg.models.*;
-import mtcg.server.database.DatabaseConnector;
 
 public class Main {
     public static void main(String[] args) {
+        int serverPort = 8000; // Set your server port
 
-        DatabaseConnector.connect();
-        DatabaseConnector.executeQuery("SELECT * FROM users");
-
-        //It's for for the simulation
-        User user1 = new User("Player1", "pass1");
-        User user2 = new User("Player2", "pass2");
-
-        Card[] cards = new Card[10];
-
-        cards[0] = new MonsterCard("M1", "Fire Dragon", 50, ElementType.FIRE);
-        cards[1] = new MonsterCard("M2", "Water Serpent", 45, ElementType.WATER);
-        cards[2] = new MonsterCard("M3", "Earth Golem", 40, ElementType.NORMAL);
-        cards[3] = new MonsterCard("M4", "Sky Griffin", 55, ElementType.NORMAL);
-        cards[4] = new MonsterCard("M5", "Forest Elf", 35, ElementType.NORMAL);
-        cards[5] = new SpellCard("S1", "Blazing Meteor", 60, ElementType.FIRE);
-        cards[6] = new SpellCard("S2", "Tidal Wave", 50, ElementType.WATER);
-        cards[7] = new SpellCard("S3", "Thunder Strike", 45, ElementType.NORMAL);
-        cards[8] = new SpellCard("S4", "Wind Gust", 40, ElementType.NORMAL);
-        cards[9] = new SpellCard("S5", "Earthquake", 55, ElementType.NORMAL);
-
-        //It's for adding card to the deck for the simulation. Later do be changed
-        for (int i = 0; i < 5; i++) {
-            user1.addCardtoDeck(cards[i]);
-            user2.addCardtoDeck(cards[i + 5]);
-        }
-
-        // Specify the port on which the server should listen
-        int serverPort = 8000; // Update this to your desired port
-
-        // Create and start the server from the server.core package
+        // Create and start the server
         Server server = new Server(serverPort);
-        server.start();
+        server.start(); // This could also be run in a new thread if non-blocking behavior is desired
 
-        /* User user3 = new User("Player1", "pass1");
-        User user4 = new User("Player2", "pass2");
-        user3.addCardtoDeck(new MonsterCard("M5", "Knight", 15, ElementType.NORMAL));
-        user4.addCardtoDeck(new SpellCard("S1", "WaterSpell", 10, ElementType.WATER));
+        System.out.println("Server is running on port " + serverPort);
+        // The server is now listening for requests
 
-        Battle battle = new Battle(user3, user4);
-        battle.startBattle();*/
     }
 }

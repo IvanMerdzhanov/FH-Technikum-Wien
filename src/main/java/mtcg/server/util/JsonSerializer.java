@@ -18,8 +18,10 @@ public class JsonSerializer {
 
     public static <T> T deserialize(String json, Class<T> clazz) {
         try {
+            System.out.println("Deserializing JSON: " + json);
             return objectMapper.readValue(json, clazz);
         } catch (IOException e) {
+            System.err.println("Error deserializing JSON: " + json);
             e.printStackTrace();
             return null;
         }

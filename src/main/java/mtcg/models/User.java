@@ -8,7 +8,7 @@ public class User {
     private String password;
     private int coins;
     private List<Card> stack;  // Collection of all the user's cards
-    private List<Card> deck;   // Selected 4 cards for battling
+    private Deck deck;   // Selected 4 cards for battling
     private UserStats userStats;
     //private String token; ОЩЕ НЕ ЗНАМ КАКВО Е ТОВА
 
@@ -19,13 +19,19 @@ public class User {
         this.password = password;
         this.coins = 20;  // Initial coins as per requirement
         this.stack = new ArrayList<>();
-        this.deck = new ArrayList<>();
+        this.deck = new Deck();
         this.userStats = new UserStats();
       //  this.token = "";  // This can be set upon successful login/registration
     }
 
-    public void addCardtoDeck(Card card){
-        deck.add(card);
+    public User() {
+        this.stack = new ArrayList<>();
+        this.deck = new Deck();
+    }
+
+
+    public void addCardtoDeck(Card card) {
+        this.deck.addCard(card);
     }
     public void removeCardFromDeck(){}
 
@@ -61,11 +67,13 @@ public class User {
         this.stack = stack;
     }
 
-    public List<Card> getDeck() {
+
+    public Deck getDeck() {
         return deck;
     }
 
-    public void setDeck(List<Card> deck) {
+
+    public void setDeck(Deck deck) {
         this.deck = deck;
     }
 

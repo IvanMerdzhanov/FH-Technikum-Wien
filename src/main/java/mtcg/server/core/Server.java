@@ -1,5 +1,7 @@
 package mtcg.server.core;
 
+import mtcg.server.handlers.RequestHandler;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -49,23 +51,23 @@ class ClientHandler extends Thread {
     }
 
     public void run() {
-        try (InputStream input = socket.getInputStream();
-             BufferedReader reader = new BufferedReader(new InputStreamReader(input));
-             OutputStream output = socket.getOutputStream();
-             PrintWriter writer = new PrintWriter(output, true)) {
+        try {
+            // Initialize RequestHandler with the client's socket
+            RequestHandler requestHandler = new RequestHandler(socket);
 
-            // Example of reading a single line from the client
-            String text = reader.readLine();
-            System.out.println("Message from client: " + text);
+            // Let RequestHandler process the request
+            requestHandler.run();
 
-            // Example of sending a response back to the client
-            writer.println("Server acknowledges message: " + text);
-
-            socket.close();
-
-        } catch (IOException ex) {
+        } catch (Exception ex) {
             System.out.println("Server exception handling client: " + ex.getMessage());
             ex.printStackTrace();
+        } finally {
+            try {
+                socket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 }
+

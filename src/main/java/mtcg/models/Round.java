@@ -12,7 +12,7 @@ public class Round {
         this.playerTwoCard = playerTwoCard;
     }
 
-    public void executeRound() {
+    public String executeRound() {
         // Assuming playerOneCard and playerTwoCard are the cards in this round
         double playerOneDamage = playerOneCard.getDamage();
         double playerTwoDamage = playerTwoCard.getDamage();
@@ -38,22 +38,21 @@ public class Round {
 
         System.out.println(String.format("Now the DAMAGES are %.0f VS %.0f", playerOneDamage, playerTwoDamage));
         // Determine the round winner
+        String roundSummary;
         if (playerOneDamage > playerTwoDamage) {
             // Player One wins the round
-            System.out.println("Player 1 wins");
-            System.out.println(String.format("%s beats %s", playerOneCard.getName(), playerTwoCard.getName()));
-            transferCardToStack(playerTwo, playerOne, playerTwoCard); // Transfer card from Player Two's deck to Player One's stack
+            roundSummary = String.format("Player 1 wins: %s beats %s", playerOneCard.getName(), playerTwoCard.getName());
+            transferCardToStack(playerTwo, playerOne, playerTwoCard);
         } else if (playerTwoDamage > playerOneDamage) {
             // Player Two wins the round
-            System.out.println("Player 2 wins");
-            System.out.println(String.format("%s beats %s", playerTwoCard.getName(), playerOneCard.getName()));
-            transferCardToStack(playerOne, playerTwo, playerOneCard); // Transfer card from Player One's deck to Player Two's stack
+            roundSummary = String.format("Player 2 wins: %s beats %s", playerTwoCard.getName(), playerOneCard.getName());
+            transferCardToStack(playerOne, playerTwo, playerOneCard);
         } else {
             // It's a draw
-            System.out.println("It's Draw");
+            roundSummary = "It's a draw between " + playerOneCard.getName() + " and " + playerTwoCard.getName();
         }
 
-        // Other round logic (like transferring defeated card, updating stats, etc.)
+        return roundSummary;
     }
 
     private double calculateElementalDamage(Card attackingCard, Card defendingCard) {
@@ -99,7 +98,7 @@ public class Round {
     }
 
     private void transferCardToStack(User fromUser, User toUser, Card card) {
-        fromUser.getDeck().remove(card);
+        fromUser.getDeck().removeCard(card);
         toUser.getStack().add(card);
     }
 
