@@ -17,22 +17,7 @@ public class DatabaseConnector {
         return conn;
     }
 
-    // Example method to execute a query
-    public static void executeQuery(String query) {
-        try (Connection conn = connect();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(query)) {
 
-            while (rs.next()) {
-                // Assuming 'username' is a column in your 'users' table
-                String username = rs.getString("username");
-                System.out.println("User: " + username);
-                // Add more columns as needed
-            }
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
-        }
-    }
 
 
 }

@@ -1,10 +1,28 @@
 package mtcg.server.handlers;
-import mtcg.models.*;
-import mtcg.server.http.*;
-import java.io.*;
-import java.net.Socket;
-import mtcg.server.models.*;
+
+import mtcg.models.Battle;
+import mtcg.models.ElementType;
+import mtcg.models.MonsterCard;
+import mtcg.models.User;
+import mtcg.server.database.DatabaseConnector;
+import mtcg.server.http.HttpRequest;
+import mtcg.server.http.HttpResponse;
+import mtcg.server.http.HttpStatus;
+import mtcg.server.models.BattleRequestData;
+import mtcg.server.models.BattleResponseData;
+import mtcg.server.models.RegistrationRequest;
 import mtcg.server.util.JsonSerializer;
+import mtcg.server.util.PasswordUtil;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.Socket;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 
 public class RequestHandler implements Runnable {
@@ -23,11 +41,14 @@ public class RequestHandler implements Runnable {
             HttpRequest request = new HttpRequest(in);
 
             // Determine the response based on the URI
-            HttpResponse response = new HttpResponse();
+            HttpResponse response;
             if ("/battle".equals(request.getUri()) && "POST".equalsIgnoreCase(request.getMethod())) {
                 response = handleBattleRequest(request);
+            } else if ("/register".equals(request.getUri()) && "POST".equalsIgnoreCase(request.getMethod())) {
+                response = handleRegisterRequest(request);
             } else {
                 // Handle other requests
+                response = new HttpResponse();
                 response.setStatus(HttpStatus.NOT_FOUND);
                 response.setBody("Not Found");
             }
@@ -46,6 +67,49 @@ public class RequestHandler implements Runnable {
             }
         }
     }
+    public HttpResponse handleRegisterRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        try {
+            RegistrationRequest regRequest = JsonSerializer.deserialize(request.getBody(), RegistrationRequest.class);
+            if (regRequest == null) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid registration data");
+                return response;
+            }
+
+            String username = regRequest.getUsername();
+            String password = regRequest.getPassword();
+
+            try (Connection conn = DatabaseConnector.connect()) {
+                PreparedStatement checkStmt = conn.prepareStatement("SELECT * FROM \"users\" WHERE username = ?");
+                checkStmt.setString(1, username);
+                ResultSet rs = checkStmt.executeQuery();
+                if (rs.next()) {
+                    response.setStatus(HttpStatus.BAD_REQUEST);
+                    response.setBody("Username already taken");
+                    return response;
+                }
+
+                String hashedPassword = PasswordUtil.hashPassword(password);
+
+                PreparedStatement insertStmt = conn.prepareStatement("INSERT INTO \"users\" (username, password, coins) VALUES (?, ?, ?)");
+                insertStmt.setString(1, username);
+                insertStmt.setString(2, hashedPassword);
+                insertStmt.setInt(3, 20); // Default starting coins
+                insertStmt.executeUpdate();
+
+                response.setStatus(HttpStatus.OK);
+                response.setBody("User registered successfully");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.setBody("Registration failed due to server error");
+        }
+        return response;
+    }
+
+
 
     private HttpResponse handleBattleRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
@@ -92,6 +156,4 @@ public class RequestHandler implements Runnable {
 
         return responseData;
     }
-
-
 }
