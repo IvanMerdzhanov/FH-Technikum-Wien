@@ -5,14 +5,9 @@ import mtcg.models.ElementType;
 import mtcg.models.MonsterCard;
 import mtcg.models.User;
 import mtcg.server.database.DatabaseConnector;
-import mtcg.server.http.HttpRequest;
-import mtcg.server.http.HttpResponse;
-import mtcg.server.http.HttpStatus;
-import mtcg.server.models.BattleRequestData;
-import mtcg.server.models.BattleResponseData;
-import mtcg.server.models.RegistrationRequest;
-import mtcg.server.util.JsonSerializer;
-import mtcg.server.util.PasswordUtil;
+import mtcg.server.http.*;
+import mtcg.server.models.*;
+import mtcg.server.util.*;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -46,6 +41,8 @@ public class RequestHandler implements Runnable {
                 response = handleBattleRequest(request);
             } else if ("/register".equals(request.getUri()) && "POST".equalsIgnoreCase(request.getMethod())) {
                 response = handleRegisterRequest(request);
+            } else if ("/login".equals(request.getUri()) && "POST".equalsIgnoreCase(request.getMethod())) {
+                response = handleLoginRequest(request);
             } else {
                 // Handle other requests
                 response = new HttpResponse();
@@ -109,6 +106,46 @@ public class RequestHandler implements Runnable {
         return response;
     }
 
+    public HttpResponse handleLoginRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        try {
+            LoginRequest loginRequest = JsonSerializer.deserialize(request.getBody(), LoginRequest.class);
+            if (loginRequest == null) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid login data");
+                return response;
+            }
+
+            String username = loginRequest.getUsername();
+            String password = loginRequest.getPassword();
+
+            try (Connection conn = DatabaseConnector.connect()) {
+                PreparedStatement stmt = conn.prepareStatement("SELECT password FROM \"users\" WHERE username = ?");
+                stmt.setString(1, username);
+                ResultSet rs = stmt.executeQuery();
+
+                if (rs.next()) {
+                    String storedPassword = rs.getString("password");
+                    if (PasswordUtil.checkPassword(password, storedPassword)) {
+                        // Generate token or set login success response
+                        response.setStatus(HttpStatus.OK);
+                        response.setBody("Login successful");
+                    } else {
+                        response.setStatus(HttpStatus.BAD_REQUEST);
+                        response.setBody("Invalid credentials");
+                    }
+                } else {
+                    response.setStatus(HttpStatus.BAD_REQUEST);
+                    response.setBody("User not found");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.setBody("Login failed due to server error");
+        }
+        return response;
+    }
 
 
     private HttpResponse handleBattleRequest(HttpRequest request) {
