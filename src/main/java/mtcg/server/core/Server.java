@@ -36,11 +36,6 @@ public class Server {
         }
     }
 
-    public static void main(String[] args) {
-        int port = 8000; // Set the port you want to listen on
-        Server server = new Server(port);
-        server.start();
-    }
 }
 
 class ClientHandler extends Thread {

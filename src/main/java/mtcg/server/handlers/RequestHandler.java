@@ -19,9 +19,16 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+import java.util.HashSet;
+import java.util.Set;
+
 
 public class RequestHandler implements Runnable {
     private final Socket clientSocket;
+    private static final Set<String> activeSessions = new HashSet<>();
+
+    HttpResponse response;
+    boolean isGameReady = activeSessions.size() >= 2;
 
     public RequestHandler(Socket clientSocket) {
         this.clientSocket = clientSocket;
@@ -35,19 +42,19 @@ public class RequestHandler implements Runnable {
             // Parse the request
             HttpRequest request = new HttpRequest(in);
 
-            // Determine the response based on the URI
+            // Log the received URI and method for debugging
+            System.out.println("Received request: Method = " + request.getMethod() + ", URI = " + request.getUri());
+
+            // Determine the response based on the URI and game state
             HttpResponse response;
-            if ("/battle".equals(request.getUri()) && "POST".equalsIgnoreCase(request.getMethod())) {
-                response = handleBattleRequest(request);
-            } else if ("/register".equals(request.getUri()) && "POST".equalsIgnoreCase(request.getMethod())) {
-                response = handleRegisterRequest(request);
-            } else if ("/login".equals(request.getUri()) && "POST".equalsIgnoreCase(request.getMethod())) {
-                response = handleLoginRequest(request);
+            if (isGameReady || "/register".equals(request.getUri()) || "/login".equals(request.getUri()) || "/endgame".equals(request.getUri())) {
+                // Handle all endpoints if the game is ready, or only login and register if not
+                response = handleRequestBasedOnUri(request);
             } else {
-                // Handle other requests
+                // Restrict access if the game is not ready
                 response = new HttpResponse();
                 response.setStatus(HttpStatus.NOT_FOUND);
-                response.setBody("Not Found");
+                response.setBody("Game not ready or endpoint not found");
             }
 
             // Send the response
@@ -64,6 +71,47 @@ public class RequestHandler implements Runnable {
             }
         }
     }
+
+
+    private HttpResponse handleRequestBasedOnUri(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+
+        switch (request.getUri()) {
+            case "/register":
+                response = handleRegisterRequest(request);
+                break;
+            case "/login":
+                response = handleLoginRequest(request);
+                break;
+            case "/battle":
+                System.out.println("Goint to /battle");
+                response = handleBattleRequest(request);
+                break;
+            case "/endgame":
+                response = handleEndGameRequest(request);
+                break;
+            // Add more cases for other endpoints as needed
+            default:
+                response.setStatus(HttpStatus.NOT_FOUND);
+                response.setBody("Endpoint not found");
+                break;
+        }
+
+        return response;
+    }
+
+    private HttpResponse handleEndGameRequest(HttpRequest request) {
+        // Logic to handle endgame request
+        HttpResponse response = new HttpResponse();
+        // Set appropriate response status and body
+        // Example:
+        response.setStatus(HttpStatus.OK);
+        response.setBody("Game ended successfully");
+        // Reset or update game state as needed
+        return response;
+    }
+
+
     public HttpResponse handleRegisterRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         try {
@@ -128,6 +176,7 @@ public class RequestHandler implements Runnable {
                     String storedPassword = rs.getString("password");
                     if (PasswordUtil.checkPassword(password, storedPassword)) {
                         // Generate token or set login success response
+                        activeSessions.add(username);
                         response.setStatus(HttpStatus.OK);
                         response.setBody("Login successful");
                     } else {
