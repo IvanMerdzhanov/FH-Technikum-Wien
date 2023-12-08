@@ -9,6 +9,16 @@ public class User {
     private int coins;
     private List<Card> stack;  // Collection of all the user's cards
     private Deck deck;   // Selected 4 cards for battling
+    private String token;
+
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
+    }
+
     private UserStats userStats;
     //private String token; ОЩЕ НЕ ЗНАМ КАКВО Е ТОВА
 

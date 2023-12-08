@@ -5,9 +5,15 @@ import mtcg.models.ElementType;
 import mtcg.models.MonsterCard;
 import mtcg.models.User;
 import mtcg.server.database.DatabaseConnector;
-import mtcg.server.http.*;
-import mtcg.server.models.*;
-import mtcg.server.util.*;
+import mtcg.server.http.HttpRequest;
+import mtcg.server.http.HttpResponse;
+import mtcg.server.http.HttpStatus;
+import mtcg.server.models.BattleRequestData;
+import mtcg.server.models.BattleResponseData;
+import mtcg.server.models.LoginRequest;
+import mtcg.server.models.RegistrationRequest;
+import mtcg.server.util.JsonSerializer;
+import mtcg.server.util.PasswordUtil;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -18,14 +24,14 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-
-import java.util.HashSet;
-import java.util.Set;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 public class RequestHandler implements Runnable {
     private final Socket clientSocket;
-    private static final Set<String> activeSessions = new HashSet<>();
+    private static Map<String, String> activeSessions = new ConcurrentHashMap<>();
 
     HttpResponse response;
     boolean isGameReady = activeSessions.size() >= 2;
@@ -47,7 +53,7 @@ public class RequestHandler implements Runnable {
 
             // Determine the response based on the URI and game state
             HttpResponse response;
-            if (isGameReady || "/register".equals(request.getUri()) || "/login".equals(request.getUri()) || "/endgame".equals(request.getUri())) {
+            if (isGameReady || "/register".equals(request.getUri()) || "/login".equals(request.getUri()) || "/logout".equals(request.getUri()) || "/endgame".equals(request.getUri())){
                 // Handle all endpoints if the game is ready, or only login and register if not
                 response = handleRequestBasedOnUri(request);
             } else {
@@ -90,7 +96,9 @@ public class RequestHandler implements Runnable {
             case "/endgame":
                 response = handleEndGameRequest(request);
                 break;
-            // Add more cases for other endpoints as needed
+            case "/logout":
+                response = handleLogoutRequest(request);
+                break;
             default:
                 response.setStatus(HttpStatus.NOT_FOUND);
                 response.setBody("Endpoint not found");
@@ -158,6 +166,8 @@ public class RequestHandler implements Runnable {
         HttpResponse response = new HttpResponse();
         try {
             LoginRequest loginRequest = JsonSerializer.deserialize(request.getBody(), LoginRequest.class);
+            System.out.println("Login request received for username: " + loginRequest.getUsername());
+
             if (loginRequest == null) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid login data");
@@ -167,6 +177,14 @@ public class RequestHandler implements Runnable {
             String username = loginRequest.getUsername();
             String password = loginRequest.getPassword();
 
+            // Check if the user is already logged in
+            if (activeSessions.containsValue(username)) {
+                System.out.println("User " + username + " is already logged in.");
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("User already logged in");
+                return response;
+            }
+
             try (Connection conn = DatabaseConnector.connect()) {
                 PreparedStatement stmt = conn.prepareStatement("SELECT password FROM \"users\" WHERE username = ?");
                 stmt.setString(1, username);
@@ -175,10 +193,16 @@ public class RequestHandler implements Runnable {
                 if (rs.next()) {
                     String storedPassword = rs.getString("password");
                     if (PasswordUtil.checkPassword(password, storedPassword)) {
-                        // Generate token or set login success response
-                        activeSessions.add(username);
-                        response.setStatus(HttpStatus.OK);
-                        response.setBody("Login successful");
+                        System.out.println("Password check passed for user: " + username);
+                        // Generate a unique token
+                        String token = UUID.randomUUID().toString();
+                        System.out.println("Generated token: " + token + " for user: " + username);
+
+                        activeSessions.put(token, username);
+                        System.out.println("Current active sessions: " + activeSessions);
+
+                       // response.setStatus(HttpStatus.OK);
+                        response.setBody("Login successful. Token: " + token); // Include the token in the response
                     } else {
                         response.setStatus(HttpStatus.BAD_REQUEST);
                         response.setBody("Invalid credentials");
@@ -195,7 +219,6 @@ public class RequestHandler implements Runnable {
         }
         return response;
     }
-
 
     private HttpResponse handleBattleRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
@@ -229,6 +252,40 @@ public class RequestHandler implements Runnable {
             System.err.println("Error in handleBattleRequest: " + e.getMessage());
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Error processing battle request");
+        }
+        return response;
+    }
+
+    public HttpResponse handleLogoutRequest(HttpRequest request) {
+
+        HttpResponse response = new HttpResponse();
+        try {
+            String authHeader = request.getHeaders().get("Authorization");
+
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid or missing token");
+                return response;
+            }
+
+            // Extract the token from the header
+            String token = authHeader.substring("Bearer ".length());
+
+            if (!activeSessions.containsKey(token)) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid or missing token");
+                return response;
+            }
+
+            // Remove the user's token from active sessions
+            activeSessions.remove(token);
+
+            response.setStatus(HttpStatus.OK);
+            response.setBody("Logout successful");
+        } catch (Exception e) {
+            e.printStackTrace();
+            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.setBody("Logout failed due to server error");
         }
         return response;
     }
