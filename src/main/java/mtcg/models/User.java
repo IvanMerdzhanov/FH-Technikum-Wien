@@ -11,14 +11,6 @@ public class User {
     private Deck deck;   // Selected 4 cards for battling
     private String token;
 
-    public String getToken() {
-        return token;
-    }
-
-    public void setToken(String token) {
-        this.token = token;
-    }
-
     private UserStats userStats;
     //private String token; ОЩЕ НЕ ЗНАМ КАКВО Е ТОВА
 
@@ -44,6 +36,10 @@ public class User {
         this.deck.addCard(card);
     }
     public void removeCardFromDeck(){}
+
+    public void spendCoins(){
+        this.coins -= 5;
+    }
 
     public String getUsername() {
         return username;
@@ -95,8 +91,12 @@ public class User {
         this.userStats = userStats;
     }
 
-    //public String getToken() {return token;}
+    public String getToken() {
+        return token;
+    }
 
-    //public void setToken(String token) {this.token = token;}
+    public void setToken(String token) {
+        this.token = token;
+    }
 
 }

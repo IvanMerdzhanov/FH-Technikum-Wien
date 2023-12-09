@@ -1,9 +1,6 @@
 package mtcg.server.handlers;
 
-import mtcg.models.Battle;
-import mtcg.models.ElementType;
-import mtcg.models.MonsterCard;
-import mtcg.models.User;
+import mtcg.models.*;
 import mtcg.server.database.DatabaseConnector;
 import mtcg.server.http.HttpRequest;
 import mtcg.server.http.HttpResponse;
@@ -14,6 +11,8 @@ import mtcg.server.models.LoginRequest;
 import mtcg.server.models.RegistrationRequest;
 import mtcg.server.util.JsonSerializer;
 import mtcg.server.util.PasswordUtil;
+import mtcg.services.PackageService;
+import mtcg.services.UserService;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -24,6 +23,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,7 +34,7 @@ public class RequestHandler implements Runnable {
     private static Map<String, String> activeSessions = new ConcurrentHashMap<>();
 
     HttpResponse response;
-    boolean isGameReady = activeSessions.size() >= 2;
+    boolean isGameReady = UserService.getActiveSessionsCount() >= 2;
 
     public RequestHandler(Socket clientSocket) {
         this.clientSocket = clientSocket;
@@ -54,7 +54,6 @@ public class RequestHandler implements Runnable {
             // Determine the response based on the URI and game state
             HttpResponse response;
             if (isGameReady || "/register".equals(request.getUri()) || "/login".equals(request.getUri()) || "/logout".equals(request.getUri()) || "/endgame".equals(request.getUri())){
-                // Handle all endpoints if the game is ready, or only login and register if not
                 response = handleRequestBasedOnUri(request);
             } else {
                 // Restrict access if the game is not ready
@@ -98,6 +97,9 @@ public class RequestHandler implements Runnable {
                 break;
             case "/logout":
                 response = handleLogoutRequest(request);
+                break;
+            case "/getpackage":
+                response = handleGetPackageRequest(request);
                 break;
             default:
                 response.setStatus(HttpStatus.NOT_FOUND);
@@ -197,8 +199,12 @@ public class RequestHandler implements Runnable {
                         // Generate a unique token
                         String token = UUID.randomUUID().toString();
                         System.out.println("Generated token: " + token + " for user: " + username);
+                        User user = new User(username, storedPassword);
+                        user.setToken(token);
+                        UserService.updateUser(user); // Add user to UserService
+                        UserService.addSession(token, username);
 
-                        activeSessions.put(token, username);
+                        UserService.addSession(token, username);
                         System.out.println("Current active sessions: " + activeSessions);
 
                        // response.setStatus(HttpStatus.OK);
@@ -255,9 +261,7 @@ public class RequestHandler implements Runnable {
         }
         return response;
     }
-
     public HttpResponse handleLogoutRequest(HttpRequest request) {
-
         HttpResponse response = new HttpResponse();
         try {
             String authHeader = request.getHeaders().get("Authorization");
@@ -268,17 +272,21 @@ public class RequestHandler implements Runnable {
                 return response;
             }
 
-            // Extract the token from the header
             String token = authHeader.substring("Bearer ".length());
 
-            if (!activeSessions.containsKey(token)) {
+            // Retrieve username associated with the token
+            String username = UserService.getUsernameForToken(token);
+            if (username == null) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
-                response.setBody("Invalid or missing token");
+                response.setBody("Session not found");
                 return response;
             }
 
-            // Remove the user's token from active sessions
-            activeSessions.remove(token);
+            // Remove the session and the user
+            if (username != null) {
+                UserService.removeSession(token);
+                UserService.deleteUser(UserService.getUser(username));
+            }
 
             response.setStatus(HttpStatus.OK);
             response.setBody("Logout successful");
@@ -287,6 +295,58 @@ public class RequestHandler implements Runnable {
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Logout failed due to server error");
         }
+        return response;
+    }
+
+
+
+    private HttpResponse handleGetPackageRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        String authHeader = request.getHeaders().get("Authorization");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        // Extract the token from the header
+        String token = authHeader.substring("Bearer ".length());
+
+        System.out.println("Received token: " + token);
+        System.out.println("Token valid: " + activeSessions.containsKey(token));
+
+        if (!UserService.isActiveSession(token)) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String username = UserService.getUsernameForToken(token);
+
+        // Use UserService to get the User object
+        User user = UserService.getUser(username);
+
+        if (user == null) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("User not found");
+            return response;
+        }
+
+        if (user.getCoins() < 5) {
+            response.setStatus(HttpStatus.BAD_REQUEST);
+            response.setBody("Insufficient coins");
+            return response;
+        }
+
+        user.spendCoins();
+        List<Card> packageCards = PackageService.getPackageCards();
+        user.getStack().addAll(packageCards);
+
+        UserService.updateUser(user);
+
+        response.setStatus(HttpStatus.OK);
+        response.setBody("Package acquired successfully");
         return response;
     }
 
