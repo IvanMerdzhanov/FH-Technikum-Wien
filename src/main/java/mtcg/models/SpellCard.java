@@ -1,11 +1,10 @@
 package mtcg.models;
 
-import mtcg.models.Card;
-import mtcg.models.ElementType;
+import java.util.UUID;
 
 public class SpellCard extends Card {
 
-    public SpellCard(String id, String name, double damage, ElementType elementType) {
+    public SpellCard(UUID id, String name, double damage, ElementType elementType) {
         super(id, name, damage, elementType);
     }
 

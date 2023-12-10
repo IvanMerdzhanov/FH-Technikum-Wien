@@ -1,12 +1,14 @@
 package mtcg.models;
 
+import java.util.UUID;
+
 public abstract class Card {
-    private String id; // Unique identifier for the card. Could be a UUID or some other unique string.
+    private UUID id; // Unique identifier for the card. Could be a UUID or some other unique string.
     private String name;
     private double damage;
     private ElementType elementType;
 
-    public Card(String id, String name, double damage, ElementType elementType) {
+    public Card(UUID id, String name, double damage, ElementType elementType) {
         this.id = id;
         this.name = name;
         this.damage = damage;
@@ -16,12 +18,8 @@ public abstract class Card {
     // Abstract methods that can be overridden by subclasses
     public abstract void specialEffect(Card opponentCard);
 
-    public String getId() {
+    public UUID getId() {
         return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
     }
 
     public String getName() {

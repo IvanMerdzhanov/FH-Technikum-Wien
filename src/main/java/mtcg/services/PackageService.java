@@ -12,11 +12,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class PackageService {
     public static List<Card> getPackageCards() {
         List<Card> cards = new ArrayList<>();
-        String query = "SELECT * FROM cards ORDER BY RANDOM() LIMIT 5"; // Get 5 random cards
+        String query = "SELECT * FROM cards WHERE taken = false ORDER BY RANDOM() LIMIT 5"; // Get 5 random cards
+        String updateQuery = "UPDATE cards SET taken = true WHERE card_id = ?"; // Query to mark the card as taken
 
         try (Connection conn = DatabaseConnector.connect();
              PreparedStatement stmt = conn.prepareStatement(query);
@@ -25,6 +27,16 @@ public class PackageService {
             while (rs.next()) {
                 Card card = createCardFromResultSet(rs);
                 cards.add(card);
+
+                // Log the card details
+                System.out.println("Retrieved card: " + card);
+
+                // Mark the card as taken
+                try (PreparedStatement updateStmt = conn.prepareStatement(updateQuery)) {
+                    updateStmt.setObject(1, card.getId());
+                    int rowsUpdated = updateStmt.executeUpdate();
+                    System.out.println("Updated " + rowsUpdated + " row(s), Card ID: " + card.getId() + " marked as taken");
+                }
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -33,22 +45,22 @@ public class PackageService {
         return cards;
     }
 
+
     private static Card createCardFromResultSet(ResultSet rs) throws SQLException {
-        String id = rs.getString("card_id");
-        String name = rs.getString("name");
+        UUID id = UUID.fromString(rs.getString("card_id"));
         double damage = rs.getDouble("damage");
         ElementType elementType = ElementType.valueOf(rs.getString("element_type").toUpperCase());
         String cardType = rs.getString("card_type");
 
         if ("monster".equalsIgnoreCase(cardType)) {
+            String name = rs.getString("name");
             return new MonsterCard(id, name, damage, elementType);
         } else if ("spell".equalsIgnoreCase(cardType)) {
+            // Set name for spell cards based on their element type
+            String name = elementType.toString() + "Spell";
             return new SpellCard(id, name, damage, elementType);
         } else {
             throw new SQLException("Unknown card type: " + cardType);
         }
     }
-
-
-    // Add more methods as needed, like addCardsToUserStack, updateCardOwnership, etc.
 }

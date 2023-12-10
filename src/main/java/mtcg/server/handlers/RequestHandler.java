@@ -101,6 +101,9 @@ public class RequestHandler implements Runnable {
             case "/getpackage":
                 response = handleGetPackageRequest(request);
                 break;
+            case "/showmycards":
+                response = handleShowMyCardsRequest(request);
+                break;
             default:
                 response.setStatus(HttpStatus.NOT_FOUND);
                 response.setBody("Endpoint not found");
@@ -241,8 +244,8 @@ public class RequestHandler implements Runnable {
             System.out.println("Players retrieved: " + playerOne.getUsername() + ", " + playerTwo.getUsername());
 
             // Add cards to players for testing
-            playerOne.addCardtoDeck(new MonsterCard("M7", "FireElf", 15, ElementType.FIRE));
-            playerTwo.addCardtoDeck(new MonsterCard("M8", "Dragon", 20, ElementType.FIRE));
+           // playerOne.addCardtoDeck(new MonsterCard("M7", "FireElf", 15, ElementType.FIRE));
+           // playerTwo.addCardtoDeck(new MonsterCard("M8", "Dragon", 20, ElementType.FIRE));
 
             Battle battle = new Battle(playerOne, playerTwo);
             battle.startBattle();
@@ -317,36 +320,78 @@ public class RequestHandler implements Runnable {
         System.out.println("Token valid: " + activeSessions.containsKey(token));
 
         if (!UserService.isActiveSession(token)) {
+            System.out.println("Token invalid or missing for token: " + token);
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
         String username = UserService.getUsernameForToken(token);
+        System.out.println("User retrieved for token: " + username);
 
-        // Use UserService to get the User object
         User user = UserService.getUser(username);
 
         if (user == null) {
+            System.out.println("User not found for username: " + username);
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("User not found");
             return response;
         }
 
+        System.out.println("User " + username + " current coins: " + user.getCoins());
         if (user.getCoins() < 5) {
+            System.out.println("Insufficient coins for user: " + username);
             response.setStatus(HttpStatus.BAD_REQUEST);
             response.setBody("Insufficient coins");
             return response;
         }
 
         user.spendCoins();
-        List<Card> packageCards = PackageService.getPackageCards();
-        user.getStack().addAll(packageCards);
+        System.out.println("Coins deducted for user " + username + ". New balance: " + user.getCoins());
 
+        List<Card> packageCards = PackageService.getPackageCards();
+        System.out.println("Package acquired for user " + username + ": " + packageCards);
+
+        user.getStack().addAll(packageCards);
         UserService.updateUser(user);
 
         response.setStatus(HttpStatus.OK);
         response.setBody("Package acquired successfully");
+        return response;
+    }
+
+    private HttpResponse handleShowMyCardsRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        String authHeader = request.getHeaders().get("Authorization");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String token = authHeader.substring("Bearer ".length());
+        if (!UserService.isActiveSession(token)) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String username = UserService.getUsernameForToken(token);
+        User user = UserService.getUser(username);
+        if (user == null) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("User not found");
+            return response;
+        }
+
+        StringBuilder cardList = new StringBuilder();
+        for (Card card : user.getStack()) {
+                cardList.append(card.getName()).append("\n");
+        }
+
+        response.setStatus(HttpStatus.OK);
+        response.setBody("Your cards:\n" + cardList);
         return response;
     }
 
