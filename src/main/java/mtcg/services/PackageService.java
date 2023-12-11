@@ -28,14 +28,10 @@ public class PackageService {
                 Card card = createCardFromResultSet(rs);
                 cards.add(card);
 
-                // Log the card details
-                System.out.println("Retrieved card: " + card);
-
                 // Mark the card as taken
                 try (PreparedStatement updateStmt = conn.prepareStatement(updateQuery)) {
                     updateStmt.setObject(1, card.getId());
                     int rowsUpdated = updateStmt.executeUpdate();
-                    System.out.println("Updated " + rowsUpdated + " row(s), Card ID: " + card.getId() + " marked as taken");
                 }
             }
         } catch (SQLException e) {
@@ -61,6 +57,18 @@ public class PackageService {
             return new SpellCard(id, name, damage, elementType);
         } else {
             throw new SQLException("Unknown card type: " + cardType);
+        }
+    }
+    public static void setCardAsNotTaken(UUID cardId) {
+        String updateQuery = "UPDATE cards SET taken = false WHERE card_id = ?";
+        try (Connection conn = DatabaseConnector.connect();
+             PreparedStatement updateStmt = conn.prepareStatement(updateQuery)) {
+
+            updateStmt.setObject(1, cardId);
+            updateStmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            // Handle exceptions, maybe log them or throw a custom exception
         }
     }
 }

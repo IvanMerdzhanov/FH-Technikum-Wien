@@ -1,6 +1,9 @@
 package mtcg.server.handlers;
 
-import mtcg.models.*;
+import mtcg.models.Battle;
+import mtcg.models.Card;
+import mtcg.models.Deck;
+import mtcg.models.User;
 import mtcg.server.database.DatabaseConnector;
 import mtcg.server.http.HttpRequest;
 import mtcg.server.http.HttpResponse;
@@ -23,10 +26,12 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 
 public class RequestHandler implements Runnable {
@@ -104,6 +109,12 @@ public class RequestHandler implements Runnable {
             case "/showmycards":
                 response = handleShowMyCardsRequest(request);
                 break;
+            case "/selectCard":
+                response = handleSelectCardRequest(request);
+                break;
+            case "/showDeck":
+                response = handleShowDeckRequest(request);
+                break;
             default:
                 response.setStatus(HttpStatus.NOT_FOUND);
                 response.setBody("Endpoint not found");
@@ -114,15 +125,30 @@ public class RequestHandler implements Runnable {
     }
 
     private HttpResponse handleEndGameRequest(HttpRequest request) {
-        // Logic to handle endgame request
         HttpResponse response = new HttpResponse();
-        // Set appropriate response status and body
-        // Example:
+
+        // Clear all users and active sessions
+        UserService.clearAllUsersAndSessions();
+
+        // Reset all cards in the database to taken = false
+        resetAllCardsInDatabase();
+
         response.setStatus(HttpStatus.OK);
-        response.setBody("Game ended successfully");
-        // Reset or update game state as needed
+        response.setBody("Game ended successfully. All users and sessions cleared, and cards reset.");
         return response;
     }
+
+    private void resetAllCardsInDatabase() {
+        String updateQuery = "UPDATE cards SET taken = false";
+        try (Connection conn = DatabaseConnector.connect();
+             PreparedStatement updateStmt = conn.prepareStatement(updateQuery)) {
+            updateStmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            // Handle exceptions, maybe log them or throw a custom exception
+        }
+    }
+
 
 
     public HttpResponse handleRegisterRequest(HttpRequest request) {
@@ -243,9 +269,6 @@ public class RequestHandler implements Runnable {
             User playerTwo = battleData.getPlayerTwo();
             System.out.println("Players retrieved: " + playerOne.getUsername() + ", " + playerTwo.getUsername());
 
-            // Add cards to players for testing
-           // playerOne.addCardtoDeck(new MonsterCard("M7", "FireElf", 15, ElementType.FIRE));
-           // playerTwo.addCardtoDeck(new MonsterCard("M8", "Dragon", 20, ElementType.FIRE));
 
             Battle battle = new Battle(playerOne, playerTwo);
             battle.startBattle();
@@ -264,6 +287,14 @@ public class RequestHandler implements Runnable {
         }
         return response;
     }
+    private BattleResponseData compileBattleResults(Battle battle) {
+        BattleResponseData responseData = new BattleResponseData();
+
+        responseData.setWinner(battle.determineWinner());
+        responseData.setRoundDetails(battle.getRoundResults());
+
+        return responseData;
+    }
     public HttpResponse handleLogoutRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         try {
@@ -276,19 +307,18 @@ public class RequestHandler implements Runnable {
             }
 
             String token = authHeader.substring("Bearer ".length());
-
-            // Retrieve username associated with the token
-            String username = UserService.getUsernameForToken(token);
-            if (username == null) {
+            if (!UserService.isActiveSession(token)) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
-                response.setBody("Session not found");
+                response.setBody("Invalid or missing token");
                 return response;
             }
 
-            // Remove the session and the user
-            if (username != null) {
+            String username = UserService.getUsernameForToken(token);
+            User user = UserService.getUser(username);
+            if (user != null) {
+                releaseUserCards(user);
                 UserService.removeSession(token);
-                UserService.deleteUser(UserService.getUser(username));
+                UserService.removeUser(user);
             }
 
             response.setStatus(HttpStatus.OK);
@@ -301,6 +331,13 @@ public class RequestHandler implements Runnable {
         return response;
     }
 
+    private void releaseUserCards(User user) {
+        // Logic to set user's cards as not taken
+        for (Card card : user.getStack()) {
+            // Assuming a method in PackageService to update a card's taken status
+            PackageService.setCardAsNotTaken(card.getId());
+        }
+    }
 
 
     private HttpResponse handleGetPackageRequest(HttpRequest request) {
@@ -316,9 +353,6 @@ public class RequestHandler implements Runnable {
         // Extract the token from the header
         String token = authHeader.substring("Bearer ".length());
 
-        System.out.println("Received token: " + token);
-        System.out.println("Token valid: " + activeSessions.containsKey(token));
-
         if (!UserService.isActiveSession(token)) {
             System.out.println("Token invalid or missing for token: " + token);
             response.setStatus(HttpStatus.UNAUTHORIZED);
@@ -327,7 +361,6 @@ public class RequestHandler implements Runnable {
         }
 
         String username = UserService.getUsernameForToken(token);
-        System.out.println("User retrieved for token: " + username);
 
         User user = UserService.getUser(username);
 
@@ -347,10 +380,8 @@ public class RequestHandler implements Runnable {
         }
 
         user.spendCoins();
-        System.out.println("Coins deducted for user " + username + ". New balance: " + user.getCoins());
 
         List<Card> packageCards = PackageService.getPackageCards();
-        System.out.println("Package acquired for user " + username + ": " + packageCards);
 
         user.getStack().addAll(packageCards);
         UserService.updateUser(user);
@@ -394,14 +425,105 @@ public class RequestHandler implements Runnable {
         response.setBody("Your cards:\n" + cardList);
         return response;
     }
+    private HttpResponse handleSelectCardRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        String authHeader = request.getHeaders().get("Authorization");
 
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
 
-    private BattleResponseData compileBattleResults(Battle battle) {
-        BattleResponseData responseData = new BattleResponseData();
+        String token = authHeader.substring("Bearer ".length());
+        if (!UserService.isActiveSession(token)) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
 
-        responseData.setWinner(battle.determineWinner());
-        responseData.setRoundDetails(battle.getRoundResults());
+        String username = UserService.getUsernameForToken(token);
+        User user = UserService.getUser(username);
+        if (user == null) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("User not found");
+            return response;
+        }
 
-        return responseData;
+        try {
+            List<Integer> cardIndexes = parseCardIndexes(request.getBody());
+            List<Integer> adjustedIndexes = cardIndexes.stream().map(i -> i - 1).collect(Collectors.toList());
+
+            Deck deck = user.getDeck();
+            deck.clear(); // Clear the existing deck
+
+            for (int index : adjustedIndexes) {
+                if (index < 0 || index >= user.getStack().size()) {
+                    throw new IllegalArgumentException("Invalid card index: " + (index + 1));
+                }
+                deck.addCard(user.getStack().get(index));
+            }
+
+            response.setStatus(HttpStatus.OK);
+            response.setBody("Cards selected successfully");
+        } catch (Exception e) {
+            response.setStatus(HttpStatus.BAD_REQUEST);
+            response.setBody("Invalid card selection: " + e.getMessage());
+            System.out.println("Error in handleSelectCardRequest: " + e.getMessage());
+        }
+        return response;
     }
+
+
+    public List<Integer> parseCardIndexes(String input) {
+        List<Integer> indexes = new ArrayList<>();
+        try {
+            // Manually extract the numbers from the JSON string
+            String numbers = input.replaceAll("[^0-9,]", ""); // Remove all but numbers and commas
+            String[] parts = numbers.split(",");
+            for (String part : parts) {
+                indexes.add(Integer.parseInt(part.trim()));
+            }
+        } catch (Exception e) {
+            System.out.println("Error parsing card indexes: " + e.getMessage());
+        }
+
+        System.out.println("Parsed indexes: " + indexes);
+        return indexes;
+    }
+    private HttpResponse handleShowDeckRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        String authHeader = request.getHeaders().get("Authorization");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String token = authHeader.substring("Bearer ".length());
+        if (!UserService.isActiveSession(token)) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String username = UserService.getUsernameForToken(token);
+        User user = UserService.getUser(username);
+        if (user == null) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("User not found");
+            return response;
+        }
+
+        StringBuilder cardList = new StringBuilder();
+        for (Card card : user.getDeck().getCards()) {
+            cardList.append(card.getName()).append("\n");
+        }
+
+        response.setStatus(HttpStatus.OK);
+        response.setBody("Your deck:\n" + cardList);
+        return response;
+    }
+
 }

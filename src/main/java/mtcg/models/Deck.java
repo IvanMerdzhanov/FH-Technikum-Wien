@@ -22,5 +22,8 @@ public class Deck {
         return new ArrayList<>(cards);
     }
 
-    // Additional methods as needed, such as shuffle, get specific card, etc.
+    public void clear() {
+        cards.clear();
+    }
+
 }

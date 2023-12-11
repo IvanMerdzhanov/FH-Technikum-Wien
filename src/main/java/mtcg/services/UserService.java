@@ -15,7 +15,7 @@ public class UserService {
     public static void updateUser(User user) {
         users.put(user.getUsername(), user);
     }
-    public static void deleteUser(User user) {
+    public static void removeUser(User user) {
         if (user != null) {
             users.remove(user.getUsername());
         }
@@ -38,5 +38,10 @@ public class UserService {
     public static int getActiveSessionsCount() {
         return activeSessions.size();
     }
+    public static void clearAllUsersAndSessions() {
+        users.clear();
+        activeSessions.clear();
+    }
+
 }
 
