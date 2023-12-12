@@ -21,6 +21,9 @@ public class UserService {
         }
     }
     public static boolean isActiveSession(String token) {
+        if (token == null) {
+            return false; // Return false if token is null to avoid NullPointerException
+        }
         return activeSessions.containsKey(token);
     }
 
@@ -34,6 +37,9 @@ public class UserService {
 
     public static String getUsernameForToken(String token) {
         return activeSessions.get(token);
+    }
+    public static String getActiveSessions(){
+        return activeSessions.toString();
     }
     public static int getActiveSessionsCount() {
         return activeSessions.size();

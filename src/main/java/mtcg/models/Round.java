@@ -98,8 +98,16 @@ public class Round {
     }
 
     private void transferCardToStack(User fromUser, User toUser, Card card) {
-        fromUser.getDeck().removeCard(card);
+        System.out.println("Before transfer - " + fromUser.getUsername() + "'s stack: " + fromUser.getStack());
+        System.out.println("Before transfer - " + toUser.getUsername() + "'s stack: " + toUser.getStack());
+
+        // Remove card from the loser's stack and add it to the winner's stack
+        fromUser.getStack().remove(card);
         toUser.getStack().add(card);
+
+        System.out.println("After transfer - " + fromUser.getUsername() + "'s stack: " + fromUser.getStack());
+        System.out.println("After transfer - " + toUser.getUsername() + "'s stack: " + toUser.getStack());
     }
+
 
 }

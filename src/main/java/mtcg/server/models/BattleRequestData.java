@@ -1,22 +1,23 @@
 package mtcg.server.models;
-import mtcg.models.User;
+
 public class BattleRequestData {
-    private User playerOne;
-    private User playerTwo;
+    private String tokenPlayerOne;
+    private String tokenPlayerTwo;
 
-    public User getPlayerOne() {
-        return playerOne;
+    // Getters and Setters
+    public String getTokenPlayerOne() {
+        return tokenPlayerOne;
     }
 
-    public void setPlayerOne(User playerOne) {
-        this.playerOne = playerOne;
+    public void setTokenPlayerOne(String tokenPlayerOne) {
+        this.tokenPlayerOne = tokenPlayerOne;
     }
 
-    public User getPlayerTwo() {
-        return playerTwo;
+    public String getTokenPlayerTwo() {
+        return tokenPlayerTwo;
     }
 
-    public void setPlayerTwo(User playerTwo) {
-        this.playerTwo = playerTwo;
+    public void setTokenPlayerTwo(String tokenPlayerTwo) {
+        this.tokenPlayerTwo = tokenPlayerTwo;
     }
 }

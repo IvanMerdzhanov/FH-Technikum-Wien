@@ -149,8 +149,6 @@ public class RequestHandler implements Runnable {
         }
     }
 
-
-
     public HttpResponse handleRegisterRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         try {
@@ -209,7 +207,7 @@ public class RequestHandler implements Runnable {
             String password = loginRequest.getPassword();
 
             // Check if the user is already logged in
-            if (activeSessions.containsValue(username)) {
+            if (UserService.isActiveSession(username)) { // Use UserService to check active session
                 System.out.println("User " + username + " is already logged in.");
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("User already logged in");
@@ -233,11 +231,10 @@ public class RequestHandler implements Runnable {
                         UserService.updateUser(user); // Add user to UserService
                         UserService.addSession(token, username);
 
-                        UserService.addSession(token, username);
-                        System.out.println("Current active sessions: " + activeSessions);
+                        System.out.println("Session added for user: " + username + ", Token: " + token);
+                        System.out.println("Current active sessions: " + UserService.getActiveSessions());
 
-                       // response.setStatus(HttpStatus.OK);
-                        response.setBody("Login successful. Token: " + token); // Include the token in the response
+                        response.setBody("Login successful. Token: " + token);
                     } else {
                         response.setStatus(HttpStatus.BAD_REQUEST);
                         response.setBody("Invalid credentials");
@@ -255,30 +252,52 @@ public class RequestHandler implements Runnable {
         return response;
     }
 
+
     private HttpResponse handleBattleRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         try {
             System.out.println("Handling battle request...");
 
+            // Deserialize the request body
             BattleRequestData battleData = JsonSerializer.deserialize(request.getBody(), BattleRequestData.class);
             if (battleData == null) {
                 throw new RuntimeException("Failed to deserialize battle data");
             }
 
-            User playerOne = battleData.getPlayerOne();
-            User playerTwo = battleData.getPlayerTwo();
-            System.out.println("Players retrieved: " + playerOne.getUsername() + ", " + playerTwo.getUsername());
+            // Extract and log tokens
+            String tokenPlayerOne = battleData.getTokenPlayerOne();
+            String tokenPlayerTwo = battleData.getTokenPlayerTwo();
+            System.out.println("Tokens received: Player One - " + tokenPlayerOne + ", Player Two - " + tokenPlayerTwo);
 
+            // Validate tokens
+            if (!UserService.isActiveSession(tokenPlayerOne) || !UserService.isActiveSession(tokenPlayerTwo)) {
+                response.setStatus(HttpStatus.UNAUTHORIZED);
+                response.setBody("One or both tokens are invalid or missing");
+                return response;
+            }
 
+            // Retrieve users and log their details
+            String usernamePlayerOne = UserService.getUsernameForToken(tokenPlayerOne);
+            String usernamePlayerTwo = UserService.getUsernameForToken(tokenPlayerTwo);
+            System.out.println("Users participating: Player One - " + usernamePlayerOne + ", Player Two - " + usernamePlayerTwo);
+
+            User playerOne = UserService.getUser(usernamePlayerOne);
+            User playerTwo = UserService.getUser(usernamePlayerTwo);
+
+            // Log decks
+            System.out.println("Player One's Deck: " + playerOne.getDeck().getCards());
+            System.out.println("Player Two's Deck: " + playerTwo.getDeck().getCards());
+
+            // Initiate battle
             Battle battle = new Battle(playerOne, playerTwo);
             battle.startBattle();
             System.out.println("Battle started...");
 
+            // Compile and send response
             BattleResponseData responseData = compileBattleResults(battle);
-            System.out.println("Battle results compiled...");
-
             response.setBody(JsonSerializer.serialize(responseData));
             response.setStatus(HttpStatus.OK);
+            System.out.println("Battle results compiled...");
 
         } catch (Exception e) {
             System.err.println("Error in handleBattleRequest: " + e.getMessage());
@@ -287,6 +306,7 @@ public class RequestHandler implements Runnable {
         }
         return response;
     }
+
     private BattleResponseData compileBattleResults(Battle battle) {
         BattleResponseData responseData = new BattleResponseData();
 
@@ -418,7 +438,7 @@ public class RequestHandler implements Runnable {
 
         StringBuilder cardList = new StringBuilder();
         for (Card card : user.getStack()) {
-                cardList.append(card.getName()).append("\n");
+            cardList.append(card.getName()).append("\n");
         }
 
         response.setStatus(HttpStatus.OK);
@@ -487,8 +507,6 @@ public class RequestHandler implements Runnable {
         } catch (Exception e) {
             System.out.println("Error parsing card indexes: " + e.getMessage());
         }
-
-        System.out.println("Parsed indexes: " + indexes);
         return indexes;
     }
     private HttpResponse handleShowDeckRequest(HttpRequest request) {

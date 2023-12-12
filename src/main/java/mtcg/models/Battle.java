@@ -18,22 +18,29 @@ public class Battle {
     }
 
     public BattleOutcome startBattle() {
-        for (int i = 0; i < 10; i++) { // Assuming a battle consists of 10 rounds
+        System.out.println("Battle started between " + playerOne.getUsername() + " and " + playerTwo.getUsername());
+        for (int i = 0; i < 4; i++) {
+            System.out.println("Round " + (i + 1) + " starts");
             Card cardOne = getRandomCardFromDeck(playerOne.getDeck());
             Card cardTwo = getRandomCardFromDeck(playerTwo.getDeck());
 
+            System.out.println("Player One's card: " + cardOne);
+            System.out.println("Player Two's card: " + cardTwo);
+
             if (cardOne == null || cardTwo == null) {
-                break; // End the battle if either player runs out of cards
+                System.out.println("Ending battle as one of the players ran out of cards.");
+                break;
             }
 
             Round round = new Round(playerOne, cardOne, playerTwo, cardTwo);
-            String roundResult = round.executeRound(); // Modify executeRound to return a result string
+            String roundResult = round.executeRound();
+            System.out.println(roundResult);
             roundResults.add(roundResult);
         }
 
-        // Determine the overall winner and return the battle outcome
-        String winner = determineWinner(); // Implement this method based on your game rules
-        return new BattleOutcome(winner, roundResults); // BattleOutcome is a new class to hold battle results
+        String winner = determineWinner();
+        System.out.println("Battle ended. Winner: " + winner);
+        return new BattleOutcome(winner, roundResults);
     }
 
     private Card getRandomCardFromDeck(Deck deck) {
@@ -54,7 +61,9 @@ public class Battle {
             } else if (result.contains("Player 2 wins")) {
                 winsPlayerTwo++;
             }
-            // Include logic for draws if needed
+            else {
+                result.contains("Draw");
+            }
         }
 
         // Determine the winner based on the number of wins
