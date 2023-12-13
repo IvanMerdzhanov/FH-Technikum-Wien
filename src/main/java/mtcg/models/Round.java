@@ -17,6 +17,10 @@ public class Round {
         double playerOneDamage = playerOneCard.getDamage();
         double playerTwoDamage = playerTwoCard.getDamage();
 
+        System.out.println(String.format("Player One's card: %s (ID: %s) - Damage: %.0f", playerOneCard.getName(), playerOneCard.getId(), playerOneDamage));
+        System.out.println(String.format("Player Two's card: %s (ID: %s) - Damage: %.0f", playerTwoCard.getName(), playerTwoCard.getId(), playerTwoDamage));
+
+
         System.out.println(String.format("The fight is between %s - %.0f and %s - %.0f", playerOneCard.getName(), playerOneDamage, playerTwoCard.getName(), playerTwoDamage));
 
 // Apply special rules first
@@ -43,11 +47,14 @@ public class Round {
             // Player One wins the round
             roundSummary = String.format("Player 1 wins: %s beats %s", playerOneCard.getName(), playerTwoCard.getName());
             transferCardToStack(playerTwo, playerOne, playerTwoCard);
+            System.out.println("Transferring card from Player Two to Player One: " + playerTwoCard.getId());
         } else if (playerTwoDamage > playerOneDamage) {
             // Player Two wins the round
             roundSummary = String.format("Player 2 wins: %s beats %s", playerTwoCard.getName(), playerOneCard.getName());
             transferCardToStack(playerOne, playerTwo, playerOneCard);
-        } else {
+            System.out.println("Transferring card from Player One to Player Two: " + playerOneCard.getId());
+        }
+        else {
             // It's a draw
             roundSummary = "It's a draw between " + playerOneCard.getName() + " and " + playerTwoCard.getName();
         }
@@ -98,15 +105,8 @@ public class Round {
     }
 
     private void transferCardToStack(User fromUser, User toUser, Card card) {
-        System.out.println("Before transfer - " + fromUser.getUsername() + "'s stack: " + fromUser.getStack());
-        System.out.println("Before transfer - " + toUser.getUsername() + "'s stack: " + toUser.getStack());
-
-        // Remove card from the loser's stack and add it to the winner's stack
-        fromUser.getStack().remove(card);
-        toUser.getStack().add(card);
-
-        System.out.println("After transfer - " + fromUser.getUsername() + "'s stack: " + fromUser.getStack());
-        System.out.println("After transfer - " + toUser.getUsername() + "'s stack: " + toUser.getStack());
+        fromUser.getStack().remove(card); // Remove card from loser's stack
+        toUser.getStack().add(card); // Add card to winner's stack
     }
 
 

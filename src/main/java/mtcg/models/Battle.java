@@ -24,13 +24,25 @@ public class Battle {
             Card cardOne = getRandomCardFromDeck(playerOne.getDeck());
             Card cardTwo = getRandomCardFromDeck(playerTwo.getDeck());
 
-            System.out.println("Player One's card: " + cardOne);
-            System.out.println("Player Two's card: " + cardTwo);
-
             if (cardOne == null || cardTwo == null) {
                 System.out.println("Ending battle as one of the players ran out of cards.");
                 break;
             }
+
+            // Log deck state before removing cards
+            System.out.println("Before Round " + (i + 1) + " - " + playerOne.getUsername() + "'s Deck: " + playerOne.getDeck().getCards());
+            System.out.println("Before Round " + (i + 1) + " - " + playerTwo.getUsername() + "'s Deck: " + playerTwo.getDeck().getCards());
+
+            // Remove selected cards from each player's deck
+            playerOne.getDeck().removeCard(cardOne);
+            playerTwo.getDeck().removeCard(cardTwo);
+
+            // Log deck state after removing cards
+            System.out.println("After Round " + (i + 1) + " - " + playerOne.getUsername() + "'s Deck: " + playerOne.getDeck().getCards());
+            System.out.println("After Round " + (i + 1) + " - " + playerTwo.getUsername() + "'s Deck: " + playerTwo.getDeck().getCards());
+
+            System.out.println("Player One's card: " + cardOne);
+            System.out.println("Player Two's card: " + cardTwo);
 
             Round round = new Round(playerOne, cardOne, playerTwo, cardTwo);
             String roundResult = round.executeRound();
@@ -42,6 +54,8 @@ public class Battle {
         System.out.println("Battle ended. Winner: " + winner);
         return new BattleOutcome(winner, roundResults);
     }
+
+
 
     private Card getRandomCardFromDeck(Deck deck) {
         if (deck.getCards().isEmpty()) {
