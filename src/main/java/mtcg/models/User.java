@@ -10,6 +10,7 @@ public class User {
     private List<Card> stack;  // Collection of all the user's cards
     private Deck deck;   // Selected 4 cards for battling
     private String token;
+    List<Trading> offers;
 
     private UserStats userStats;
     //private String token; ОЩЕ НЕ ЗНАМ КАКВО Е ТОВА
@@ -24,6 +25,14 @@ public class User {
         this.deck = new Deck();
         this.userStats = new UserStats();
       //  this.token = "";  // This can be set upon successful login/registration
+    }
+
+    public List<Trading> getOffers() {
+        return offers;
+    }
+
+    public void setOffers(List<Trading> offers) {
+        this.offers = offers;
     }
 
     public User() {

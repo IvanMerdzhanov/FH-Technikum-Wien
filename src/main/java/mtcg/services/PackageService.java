@@ -71,4 +71,25 @@ public class PackageService {
             // Handle exceptions, maybe log them or throw a custom exception
         }
     }
+
+    public static Card getCardById(UUID cardId) {
+        String query = "SELECT * FROM cards WHERE card_id = ?";
+        try (Connection conn = DatabaseConnector.connect();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setObject(1, cardId);
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                return createCardFromResultSet(rs);
+            } else {
+                return null; // Card not found
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            // Handle exceptions, maybe log them or throw a custom exception
+            return null;
+        }
+    }
+
 }

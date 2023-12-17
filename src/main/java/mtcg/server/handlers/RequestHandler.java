@@ -1,17 +1,11 @@
 package mtcg.server.handlers;
 
-import mtcg.models.Battle;
-import mtcg.models.Card;
-import mtcg.models.Deck;
-import mtcg.models.User;
+import mtcg.models.*;
 import mtcg.server.database.DatabaseConnector;
 import mtcg.server.http.HttpRequest;
 import mtcg.server.http.HttpResponse;
 import mtcg.server.http.HttpStatus;
-import mtcg.server.models.BattleRequestData;
-import mtcg.server.models.BattleResponseData;
-import mtcg.server.models.LoginRequest;
-import mtcg.server.models.RegistrationRequest;
+import mtcg.server.models.*;
 import mtcg.server.util.JsonSerializer;
 import mtcg.server.util.PasswordUtil;
 import mtcg.services.PackageService;
@@ -28,16 +22,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 
 public class RequestHandler implements Runnable {
     private final Socket clientSocket;
-    private static Map<String, String> activeSessions = new ConcurrentHashMap<>();
-
     HttpResponse response;
     boolean isGameReady = UserService.getActiveSessionsCount() >= 2;
 
@@ -114,6 +104,15 @@ public class RequestHandler implements Runnable {
                 break;
             case "/showDeck":
                 response = handleShowDeckRequest(request);
+                break;
+            case "/createTradeOffer":
+                response = handleCreateTradeOfferRequest(request);
+                break;
+            case "/checkOffers":
+                response = handleCheckOffersRequest(request);
+                break;
+            case "/declineOffer":
+                response = handleDeclineOfferRequest(request);
                 break;
             default:
                 response.setStatus(HttpStatus.NOT_FOUND);
@@ -541,6 +540,203 @@ public class RequestHandler implements Runnable {
 
         response.setStatus(HttpStatus.OK);
         response.setBody("Your deck:\n" + cardList);
+        return response;
+    }
+    private HttpResponse handleCreateTradeOfferRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        String authHeader = request.getHeaders().get("Authorization");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String token = authHeader.substring("Bearer ".length());
+        if (!UserService.isActiveSession(token)) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        try {
+            TradeOfferRequest tradeOfferRequest = JsonSerializer.deserialize(request.getBody(), TradeOfferRequest.class);
+            if (tradeOfferRequest == null) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid trade offer data");
+                return response;
+            }
+
+            String offeringUsername = UserService.getUsernameForToken(token);
+            User offeringUser = UserService.getUser(offeringUsername);
+            User receivingUser = UserService.getUser(tradeOfferRequest.getReceivingUsername());
+
+            Card offeredCard = null;
+            if (tradeOfferRequest.getCardIndex() != null) {
+                int cardIndex = tradeOfferRequest.getCardIndex() - 1; // Adjust for 1-based index from client
+                if (cardIndex >= 0 && cardIndex < offeringUser.getStack().size()) {
+                    offeredCard = offeringUser.getStack().get(cardIndex);
+                }
+            }
+
+            Trading tradeOffer;
+            if (offeredCard != null && tradeOfferRequest.getCoins() > 0) {
+                tradeOffer = new Trading(offeringUser, receivingUser, offeredCard, tradeOfferRequest.getCoins());
+            } else if (offeredCard != null) {
+                tradeOffer = new Trading(offeringUser, receivingUser, offeredCard);
+            } else {
+                tradeOffer = new Trading(offeringUser, receivingUser, tradeOfferRequest.getCoins());
+            }
+
+            if (!validateOffer(offeringUser, tradeOffer)) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid offer, card not owned or insufficient coins");
+                return response;
+            }
+
+            // Add the trade offer to the receiving user's offers
+            List<Trading> receivingUserOffers = receivingUser.getOffers();
+            if (receivingUserOffers == null) {
+                receivingUserOffers = new ArrayList<>();
+                receivingUser.setOffers(receivingUserOffers);
+            }
+            receivingUserOffers.add(tradeOffer);
+
+            response.setStatus(HttpStatus.OK);
+            response.setBody("Trade offer created successfully");
+        } catch (Exception e) {
+            e.printStackTrace();
+            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.setBody("Error processing trade offer request");
+        }
+
+        return response;
+    }
+
+    private boolean validateOffer(User offeringUser, Trading tradeOffer) {
+        if (tradeOffer.getOfferedCard() != null && !offeringUser.getStack().contains(tradeOffer.getOfferedCard())) {
+            return false; // User doesn't own the card
+        }
+        if (tradeOffer.getOfferedCoins() > 0 && offeringUser.getCoins() < tradeOffer.getOfferedCoins()) {
+            return false; // User doesn't have enough coins
+        }
+        return true; // Valid offer
+    }
+
+
+    private HttpResponse handleCheckOffersRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        String authHeader = request.getHeaders().get("Authorization");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String token = authHeader.substring("Bearer ".length());
+        if (!UserService.isActiveSession(token)) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String username = UserService.getUsernameForToken(token);
+        User user = UserService.getUser(username);
+        if (user == null) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("User not found");
+            return response;
+        }
+
+        List<Trading> offers = user.getOffers();
+        if (offers == null || offers.isEmpty()) {
+            response.setStatus(HttpStatus.OK);
+            response.setBody("No trade offers available");
+            return response;
+        }
+
+        StringBuilder offerDetails = new StringBuilder("Trade offers:\n");
+        int index = 1;
+
+        for (Trading offer : offers) {
+            offerDetails.append("Offer ").append(index++).append(": ");
+            offerDetails.append("Offer from: ").append(offer.getOfferingUser().getUsername());
+            offerDetails.append(" to: ").append(offer.getReceivingUser().getUsername());
+
+            if (offer.getOfferedCard() != null) {
+                offerDetails.append(", Card: ").append(offer.getOfferedCard().getName());
+                offerDetails.append(" (ID: ").append(offer.getOfferedCard().getId()).append(")");
+            }
+
+            if (offer.getOfferedCoins() > 0) {
+                if (offer.getOfferedCard() != null) {
+                    offerDetails.append(" and ");
+                } else {
+                    offerDetails.append(", ");
+                }
+                offerDetails.append("Coins: ").append(offer.getOfferedCoins());
+            }
+
+            offerDetails.append(", Status: ").append(offer.getStatus()).append("\n");
+        }
+
+        response.setBody(offerDetails.toString());
+
+        response.setStatus(HttpStatus.OK);
+        response.setBody(offerDetails.toString());
+        return response;
+    }
+    private HttpResponse handleDeclineOfferRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        String authHeader = request.getHeaders().get("Authorization");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String token = authHeader.substring("Bearer ".length());
+        if (!UserService.isActiveSession(token)) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        try {
+            String username = UserService.getUsernameForToken(token);
+            User user = UserService.getUser(username);
+            if (user == null) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("User not found");
+                return response;
+            }
+
+            DeclineOfferRequest declineRequest = JsonSerializer.deserialize(request.getBody(), DeclineOfferRequest.class);
+            if (declineRequest == null) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid request format");
+                return response;
+            }
+
+            int offerIndex = declineRequest.getOfferIndex() - 1;
+
+            if (offerIndex < 0 || offerIndex >= user.getOffers().size()) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid offer index");
+                return response;
+            }
+
+            user.getOffers().remove(offerIndex);
+            response.setStatus(HttpStatus.OK);
+            response.setBody("Trade offer declined successfully");
+        } catch (Exception e) {
+            e.printStackTrace();
+            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.setBody("Error processing decline offer request");
+        }
+
         return response;
     }
 
