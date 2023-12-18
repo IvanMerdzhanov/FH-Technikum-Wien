@@ -1,6 +1,6 @@
 package mtcg.server.models;
 
-public class DeclineOfferRequest {
+public class TradeOfferIndexRequest {
         private int offerIndex;
 
         public int getOfferIndex() {

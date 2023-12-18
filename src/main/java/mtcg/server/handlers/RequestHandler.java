@@ -114,6 +114,9 @@ public class RequestHandler implements Runnable {
             case "/declineOffer":
                 response = handleDeclineOfferRequest(request);
                 break;
+            case "/acceptOffer":
+                response = handleAcceptTradeOfferRequest(request);
+                break;
             default:
                 response.setStatus(HttpStatus.NOT_FOUND);
                 response.setBody("Endpoint not found");
@@ -713,7 +716,7 @@ public class RequestHandler implements Runnable {
                 return response;
             }
 
-            DeclineOfferRequest declineRequest = JsonSerializer.deserialize(request.getBody(), DeclineOfferRequest.class);
+            TradeOfferIndexRequest declineRequest = JsonSerializer.deserialize(request.getBody(), TradeOfferIndexRequest.class);
             if (declineRequest == null) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid request format");
@@ -739,5 +742,92 @@ public class RequestHandler implements Runnable {
 
         return response;
     }
+    private HttpResponse handleAcceptTradeOfferRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        String authHeader = request.getHeaders().get("Authorization");
 
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String token = authHeader.substring("Bearer ".length());
+        if (!UserService.isActiveSession(token)) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        try {
+            String username = UserService.getUsernameForToken(token);
+            User user = UserService.getUser(username);
+            if (user == null) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("User not found");
+                return response;
+            }
+
+            TradeOfferIndexRequest acceptRequest = JsonSerializer.deserialize(request.getBody(), TradeOfferIndexRequest.class);
+            if (acceptRequest == null) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid request format");
+                return response;
+            }
+
+            int offerIndex = acceptRequest.getOfferIndex() - 1; // Adjust for 0-based indexing
+
+            if (offerIndex < 0 || offerIndex >= user.getOffers().size()) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid offer index");
+                return response;
+            }
+
+            Trading offer = user.getOffers().get(offerIndex);
+            executeTrade(offer);
+            user.getOffers().remove(offerIndex);
+
+            response.setStatus(HttpStatus.OK);
+            response.setBody("Trade offer accepted successfully");
+        } catch (Exception e) {
+            e.printStackTrace();
+            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.setBody("Error processing accept trade offer request");
+        }
+
+        return response;
+    }
+
+
+    private void executeTrade(Trading offer) {
+        User offeringUser = offer.getOfferingUser();
+        User receivingUser = offer.getReceivingUser();
+
+        // Transfer the card if present in the offer
+        if (offer.getOfferedCard() != null) {
+            transferCardToStack(offeringUser, receivingUser, offer.getOfferedCard());
+        }
+
+        // Transfer coins if present in the offer
+        if (offer.getOfferedCoins() > 0) {
+            transferCoins(offeringUser, receivingUser, offer.getOfferedCoins());
+        }
+
+        offer.setStatus(Trading.TradeStatus.ACCEPTED);
+    }
+
+    private void transferCoins(User fromUser, User toUser, int amount) {
+        if (fromUser.getCoins() >= amount) {
+            fromUser.setCoins(fromUser.getCoins() - amount);
+            toUser.setCoins(toUser.getCoins() + amount);
+        } else {
+            System.out.println("Insufficient coins for the transfer.");
+        }
+    }
+
+
+    private void transferCardToStack(User fromUser, User toUser, Card card) {
+        fromUser.getStack().remove(card); // Remove card from the offering user's stack
+        toUser.getStack().add(card);      // Add card to the receiving user's stack
+    }
 }
