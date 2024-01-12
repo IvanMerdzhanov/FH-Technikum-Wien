@@ -574,26 +574,36 @@ public class RequestHandler implements Runnable {
             User offeringUser = UserService.getUser(offeringUsername);
             User receivingUser = UserService.getUser(tradeOfferRequest.getReceivingUsername());
 
+            // Process the offered card
             Card offeredCard = null;
-            if (tradeOfferRequest.getCardIndex() != null) {
-                int cardIndex = tradeOfferRequest.getCardIndex() - 1; // Adjust for 1-based index from client
+            if (tradeOfferRequest.getOfferedCardIndex() != null) {
+                int cardIndex = tradeOfferRequest.getOfferedCardIndex() - 1;
                 if (cardIndex >= 0 && cardIndex < offeringUser.getStack().size()) {
                     offeredCard = offeringUser.getStack().get(cardIndex);
                 }
             }
 
-            Trading tradeOffer;
-            if (offeredCard != null && tradeOfferRequest.getCoins() > 0) {
-                tradeOffer = new Trading(offeringUser, receivingUser, offeredCard, tradeOfferRequest.getCoins());
-            } else if (offeredCard != null) {
-                tradeOffer = new Trading(offeringUser, receivingUser, offeredCard);
-            } else {
-                tradeOffer = new Trading(offeringUser, receivingUser, tradeOfferRequest.getCoins());
+            // Process the requested card
+            Card requestedCard = null;
+            if (tradeOfferRequest.getRequestedCardIndex() != null) {
+                int cardIndex = tradeOfferRequest.getRequestedCardIndex() - 1;
+                if (cardIndex >= 0 && cardIndex < receivingUser.getStack().size()) {
+                    requestedCard = receivingUser.getStack().get(cardIndex);
+                }
             }
 
-            if (!validateOffer(offeringUser, tradeOffer)) {
+            if ((tradeOfferRequest.getOfferedCardIndex() != null && (tradeOfferRequest.getOfferedCardIndex() <= 0 || tradeOfferRequest.getOfferedCardIndex() > offeringUser.getStack().size())) ||
+                    (tradeOfferRequest.getRequestedCardIndex() != null && (tradeOfferRequest.getRequestedCardIndex() <= 0 || tradeOfferRequest.getRequestedCardIndex() > receivingUser.getStack().size()))) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
-                response.setBody("Invalid offer, card not owned or insufficient coins");
+                response.setBody("Invalid card index");
+                return response;
+            }
+
+            Trading tradeOffer = new Trading(offeringUser, receivingUser, offeredCard, tradeOfferRequest.getOfferedCoins(), requestedCard, tradeOfferRequest.getRequestedCoins());
+
+            if (!validateOffer(offeringUser, receivingUser, tradeOffer)) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid offer, check card ownership or coin balance");
                 return response;
             }
 
@@ -616,17 +626,26 @@ public class RequestHandler implements Runnable {
         return response;
     }
 
-    private boolean validateOffer(User offeringUser, Trading tradeOffer) {
+
+    private boolean validateOffer(User offeringUser, User receivingUser, Trading tradeOffer) {
+        // Check if offering user has the card and coins they are offering
         if (tradeOffer.getOfferedCard() != null && !offeringUser.getStack().contains(tradeOffer.getOfferedCard())) {
-            return false; // User doesn't own the card
+            return false; // Offering user doesn't own the card
         }
         if (tradeOffer.getOfferedCoins() > 0 && offeringUser.getCoins() < tradeOffer.getOfferedCoins()) {
-            return false; // User doesn't have enough coins
+            return false; // Offering user doesn't have enough coins
         }
+
+        // Check if receiving user has the card and coins being requested
+        if (tradeOffer.getRequestedCard() != null && !receivingUser.getStack().contains(tradeOffer.getRequestedCard())) {
+            return false; // Receiving user doesn't own the requested card
+        }
+        if (tradeOffer.getRequestedCoins() > 0 && receivingUser.getCoins() < tradeOffer.getRequestedCoins()) {
+            return false; // Receiving user doesn't have enough coins
+        }
+
         return true; // Valid offer
     }
-
-
     private HttpResponse handleCheckOffersRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");
@@ -664,32 +683,14 @@ public class RequestHandler implements Runnable {
 
         for (Trading offer : offers) {
             offerDetails.append("Offer ").append(index++).append(": ");
-            offerDetails.append("Offer from: ").append(offer.getOfferingUser().getUsername());
-            offerDetails.append(" to: ").append(offer.getReceivingUser().getUsername());
-
-            if (offer.getOfferedCard() != null) {
-                offerDetails.append(", Card: ").append(offer.getOfferedCard().getName());
-                offerDetails.append(" (ID: ").append(offer.getOfferedCard().getId()).append(")");
-            }
-
-            if (offer.getOfferedCoins() > 0) {
-                if (offer.getOfferedCard() != null) {
-                    offerDetails.append(" and ");
-                } else {
-                    offerDetails.append(", ");
-                }
-                offerDetails.append("Coins: ").append(offer.getOfferedCoins());
-            }
-
-            offerDetails.append(", Status: ").append(offer.getStatus()).append("\n");
+            offerDetails.append(offer.getOfferDetails()).append("\n");
         }
-
-        response.setBody(offerDetails.toString());
 
         response.setStatus(HttpStatus.OK);
         response.setBody(offerDetails.toString());
         return response;
     }
+
     private HttpResponse handleDeclineOfferRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");
@@ -798,23 +799,31 @@ public class RequestHandler implements Runnable {
         return response;
     }
 
-
     private void executeTrade(Trading offer) {
         User offeringUser = offer.getOfferingUser();
         User receivingUser = offer.getReceivingUser();
 
-        // Transfer the card if present in the offer
+        // Transfer the offered card from offering user to receiving user
         if (offer.getOfferedCard() != null) {
             transferCardToStack(offeringUser, receivingUser, offer.getOfferedCard());
         }
 
-        // Transfer coins if present in the offer
+        // Transfer the requested card from receiving user to offering user
+        if (offer.getRequestedCard() != null) {
+            transferCardToStack(receivingUser, offeringUser, offer.getRequestedCard());
+        }
+
+        // Transfer the offered coins from offering user to receiving user
         if (offer.getOfferedCoins() > 0) {
             transferCoins(offeringUser, receivingUser, offer.getOfferedCoins());
         }
 
-        offer.setStatus(Trading.TradeStatus.ACCEPTED);
+        // Transfer the requested coins from receiving user to offering user
+        if (offer.getRequestedCoins() > 0) {
+            transferCoins(receivingUser, offeringUser, offer.getRequestedCoins());
+        }
     }
+
 
     private void transferCoins(User fromUser, User toUser, int amount) {
         if (fromUser.getCoins() >= amount) {
@@ -824,7 +833,6 @@ public class RequestHandler implements Runnable {
             System.out.println("Insufficient coins for the transfer.");
         }
     }
-
 
     private void transferCardToStack(User fromUser, User toUser, Card card) {
         fromUser.getStack().remove(card); // Remove card from the offering user's stack

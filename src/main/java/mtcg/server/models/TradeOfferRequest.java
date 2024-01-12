@@ -1,31 +1,21 @@
 package mtcg.server.models;
 
-import java.util.UUID;
-
 public class TradeOfferRequest {
-    private String receivingUsername;
     private String offeringUsername;
-    private UUID cardId; // Can be null if only coins are offered
-    private int coins; // Can be 0 if only a card is offered
-    private Integer cardIndex;
+    private String receivingUsername;
+    private Integer offeredCardIndex; // Index of the card offered by the offering user
+    private Integer requestedCardIndex; // Index of the card requested from the receiving user
+    private int offeredCoins; // Coins offered by the offering user
+    private int requestedCoins; // Coins requested from the receiving user
+
+    // Getters and setters
+
     public String getOfferingUsername() {
         return offeringUsername;
     }
 
     public void setOfferingUsername(String offeringUsername) {
         this.offeringUsername = offeringUsername;
-    }
-
-    public void setCardIndex(Integer cardIndex) {
-        this.cardIndex = cardIndex;
-    }
-
-    public Integer  getCardIndex() {
-        return cardIndex;
-    }
-
-    public void setCardIndex(int cardIndex) {
-        this.cardIndex = cardIndex;
     }
 
     public String getReceivingUsername() {
@@ -36,20 +26,35 @@ public class TradeOfferRequest {
         this.receivingUsername = receivingUsername;
     }
 
-    public UUID getCardId() {
-        return cardId;
+    public Integer getOfferedCardIndex() {
+        return offeredCardIndex;
     }
 
-    public void setCardId(UUID cardId) {
-        this.cardId = cardId;
+    public void setOfferedCardIndex(Integer offeredCardIndex) {
+        this.offeredCardIndex = offeredCardIndex;
     }
 
-    public int getCoins() {
-        return coins;
+    public Integer getRequestedCardIndex() {
+        return requestedCardIndex;
     }
 
-    public void setCoins(int coins) {
-        this.coins = coins;
+    public void setRequestedCardIndex(Integer requestedCardIndex) {
+        this.requestedCardIndex = requestedCardIndex;
     }
 
+    public int getOfferedCoins() {
+        return offeredCoins;
+    }
+
+    public void setOfferedCoins(int offeredCoins) {
+        this.offeredCoins = offeredCoins;
+    }
+
+    public int getRequestedCoins() {
+        return requestedCoins;
+    }
+
+    public void setRequestedCoins(int requestedCoins) {
+        this.requestedCoins = requestedCoins;
+    }
 }
