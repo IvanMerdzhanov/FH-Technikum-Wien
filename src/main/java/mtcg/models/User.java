@@ -11,7 +11,7 @@ public class User {
     private Deck deck;   // Selected 4 cards for battling
     private String token;
     List<Trading> offers;
-
+    private boolean canChangeCredentials;
     private UserStats userStats;
     //private String token; ОЩЕ НЕ ЗНАМ КАКВО Е ТОВА
 
@@ -107,5 +107,10 @@ public class User {
     public void setToken(String token) {
         this.token = token;
     }
-
+    public boolean canChangeCredentials() {
+        return canChangeCredentials;
+    }
+    public void setCanChangeCredentials(boolean canChangeCredentials) {
+        this.canChangeCredentials = canChangeCredentials;
+    }
 }

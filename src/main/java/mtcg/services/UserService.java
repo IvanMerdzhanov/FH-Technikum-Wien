@@ -48,6 +48,24 @@ public class UserService {
         users.clear();
         activeSessions.clear();
     }
+    public static void updateUsername(String oldUsername, String newUsername) {
+        // Retrieve the user object
+        User user = users.get(oldUsername);
+        if (user != null) {
+            // Update username in the User object
+            user.setUsername(newUsername);
 
+            // Update the user in the users map with the new username
+            users.remove(oldUsername);
+            users.put(newUsername, user);
+
+            // Update the active session with the new username, if it exists
+            activeSessions.entrySet().forEach(entry -> {
+                if (entry.getValue().equals(oldUsername)) {
+                    entry.setValue(newUsername);
+                }
+            });
+        }
+    }
 }
 
