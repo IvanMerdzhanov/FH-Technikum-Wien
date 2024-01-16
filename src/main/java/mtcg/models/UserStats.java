@@ -1,68 +1,93 @@
 package mtcg.models;
 
 public class UserStats {
-    private int eloScore;
-    private int gamesPlayed;
-    private int gamesWon;
-    private int gamesLost;
+    private int totalWins;
+    private int totalLosses;
+    private int totalDraws;
+    private int eloRating;
 
-
-    public UserStats() {
-        this.eloScore = 100; // Starting ELO score is 100
-        this.gamesPlayed = 0;
-        this.gamesWon = 0;
-        this.gamesLost = 0;
+    // Constructor
+    public UserStats(int totalWins, int totalLosses, int totalDraws, int eloRating) {
+        this.totalWins = totalWins;
+        this.totalLosses = totalLosses;
+        this.totalDraws = totalDraws;
+        this.eloRating = eloRating;
     }
 
+    // Getters and Setters
+    public int getTotalWins() {
+        return totalWins;
+    }
 
-    public boolean updateEloScore(boolean win) {
-        // Let's assume you don't want the ELO score to go below zero
-        if (win) {
-            this.eloScore += 3;
-            this.gamesWon++;
+    public void setTotalWins(int totalWins) {
+        this.totalWins = totalWins;
+    }
+
+    public int getTotalLosses() {
+        return totalLosses;
+    }
+
+    public void setTotalLosses(int totalLosses) {
+        this.totalLosses = totalLosses;
+    }
+
+    public int getTotalDraws() {
+        return totalDraws;
+    }
+
+    public void setTotalDraws(int totalDraws) {
+        this.totalDraws = totalDraws;
+    }
+
+    public int getEloRating() {
+        return eloRating;
+    }
+
+    public void setEloRating(int eloRating) {
+        this.eloRating = eloRating;
+    }
+
+    // Update methods for wins, losses, and draws
+    public void recordWin() {
+        this.totalWins++;
+        updateEloRating(true);
+    }
+
+    public void recordLoss() {
+        this.totalLosses++;
+        updateEloRating(false);
+    }
+
+    // Method to update ELO rating
+    private void updateEloRating(boolean isWin) {
+        if (isWin) {
+            this.eloRating += 100; // Example increment for a win
         } else {
-            // Check if the ELO score would go below zero after losing
-            if (this.eloScore - 5 < 0) {
-                // If it does, you might decide not to change the score and return false
-                return false; // Update not successful because it would result in a negative score
-            }
-            this.eloScore -= 5;
-            this.gamesLost++;
+            this.eloRating -= 100; // Example decrement for a loss
         }
-        this.gamesPlayed++;
-        return true; // Update successful
+        // Ensure ELO rating does not go below a certain threshold, e.g., 0
+        this.eloRating = Math.max(this.eloRating, 0);
+    }
+    public void incrementWins(int wins) {
+        this.totalWins += wins;
     }
 
-
-    public int getEloScore() {
-        return eloScore;
+    public void incrementLosses(int losses) {
+        this.totalLosses += losses;
     }
 
-    public void setEloScore(int eloScore) {
-        this.eloScore = eloScore;
+    public void incrementDraws(int draws) {
+        this.totalDraws += draws;
+    }
+    public void adjustEloRating(int change) {
+        this.eloRating += change;
     }
 
-    public int getGamesPlayed() {
-        return gamesPlayed;
+    public void incrementEloRating(int i) {
+        eloRating += i;
     }
-
-    public void setGamesPlayed(int gamesPlayed) {
-        this.gamesPlayed = gamesPlayed;
-    }
-
-    public int getGamesWon() {
-        return gamesWon;
-    }
-
-    public void setGamesWon(int gamesWon) {
-        this.gamesWon = gamesWon;
-    }
-
-    public int getGamesLost() {
-        return gamesLost;
-    }
-
-    public void setGamesLost(int gamesLost) {
-        this.gamesLost = gamesLost;
+    public void decrementEloRating(int i){
+        eloRating -= i;
     }
 }
+

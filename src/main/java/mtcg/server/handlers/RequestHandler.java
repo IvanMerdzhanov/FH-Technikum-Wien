@@ -22,13 +22,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 
 public class RequestHandler implements Runnable {
     private final Socket clientSocket;
-    HttpResponse response;
     boolean isGameReady = UserService.getActiveSessionsCount() >= 2;
 
     public RequestHandler(Socket clientSocket) {
@@ -126,6 +126,9 @@ public class RequestHandler implements Runnable {
             case "/changeUsername":
                 response = checkAuthentication(request) ? handleChangeUsernameRequest(request) : unauthorizedResponse();
                 break;
+            case "/showRecord":
+                response = handleShowMyRecordRequest(request);
+                break;
             default:
                 response.setStatus(HttpStatus.NOT_FOUND);
                 response.setBody("Endpoint not found");
@@ -185,11 +188,14 @@ public class RequestHandler implements Runnable {
 
                 String hashedPassword = PasswordUtil.hashPassword(password);
 
-                PreparedStatement insertStmt = conn.prepareStatement("INSERT INTO \"users\" (username, password, coins) VALUES (?, ?, ?)");
+                PreparedStatement insertStmt = conn.prepareStatement("INSERT INTO \"users\" (username, password) VALUES (?, ?)");
                 insertStmt.setString(1, username);
                 insertStmt.setString(2, hashedPassword);
-                insertStmt.setInt(3, 20); // Default starting coins
                 insertStmt.executeUpdate();
+
+                PreparedStatement statsStmt = conn.prepareStatement("INSERT INTO user_statistics (username, total_wins, total_losses, total_draws, elo_rating) VALUES (?, 0, 0, 0, 100)");
+                statsStmt.setString(1, username);
+                statsStmt.executeUpdate();
 
                 response.setStatus(HttpStatus.OK);
                 response.setBody("User registered successfully");
@@ -239,6 +245,22 @@ public class RequestHandler implements Runnable {
                         System.out.println("Generated token: " + token + " for user: " + username);
                         User user = new User(username, storedPassword);
                         user.setToken(token);
+
+                        PreparedStatement statsStmt = conn.prepareStatement("SELECT total_wins, total_losses, total_draws, elo_rating FROM user_statistics WHERE username = ?");
+                        statsStmt.setString(1, username);
+                        ResultSet statsRs = statsStmt.executeQuery();
+
+                        if (statsRs.next()) {
+                            UserStats stats = new UserStats(
+                                    statsRs.getInt("total_wins"),
+                                    statsRs.getInt("total_losses"),
+                                    statsRs.getInt("total_draws"),
+                                    statsRs.getInt("elo_rating")
+                            );
+
+                            // Update User object with UserStats
+                            user.setUserStats(stats);
+                        }
                         UserService.updateUser(user); // Add user to UserService
                         UserService.addSession(token, username);
 
@@ -301,12 +323,19 @@ public class RequestHandler implements Runnable {
 
             // Initiate battle
             Battle battle = new Battle(playerOne, playerTwo);
-            battle.startBattle();
+            String winner = battle.startBattle(); // This should now return the winner's username
             System.out.println("Battle started...");
 
+            // Update statistics in the database after the battle
+            try (Connection conn = DatabaseConnector.connect()) {
+                battle.finishBattle(winner, conn); // Pass the winner and connection to update stats
+            } catch (SQLException e) {
+                System.err.println("Database error while updating stats: " + e.getMessage());
+            }
+
             // Compile and send response
-            BattleResponseData responseData = compileBattleResults(battle);
-            response.setBody(JsonSerializer.serialize(responseData));
+            BattleResponseData responseData = compileBattleResults(battle, winner); // Pass the winner to the response compilation
+            response.setBody(Objects.requireNonNull(JsonSerializer.serialize(responseData)));
             response.setStatus(HttpStatus.OK);
             System.out.println("Battle results compiled...");
 
@@ -318,12 +347,10 @@ public class RequestHandler implements Runnable {
         return response;
     }
 
-    private BattleResponseData compileBattleResults(Battle battle) {
+    private BattleResponseData compileBattleResults(Battle battle, String winner) {
         BattleResponseData responseData = new BattleResponseData();
-
-        responseData.setWinner(battle.determineWinner());
+        responseData.setWinner(winner); // Use the winner from the battle directly
         responseData.setRoundDetails(battle.getRoundResults());
-
         return responseData;
     }
     public HttpResponse handleLogoutRequest(HttpRequest request) {
@@ -1078,4 +1105,42 @@ public class RequestHandler implements Runnable {
         }
         return response;
     }
+    private HttpResponse handleShowMyRecordRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        String authHeader = request.getHeaders().get("Authorization");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String token = authHeader.substring("Bearer ".length());
+        if (!UserService.isActiveSession(token)) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String username = UserService.getUsernameForToken(token);
+        User user = UserService.getUser(username);
+        if (user == null || user.getUserStats() == null) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("User or user statistics not found");
+            return response;
+        }
+
+        UserStats stats = user.getUserStats();
+        StringBuilder record = new StringBuilder();
+        record.append("Record for ").append(username).append(":\n");
+        record.append("Wins: ").append(stats.getTotalWins()).append("\n");
+        record.append("Losses: ").append(stats.getTotalLosses()).append("\n");
+        record.append("Draws: ").append(stats.getTotalDraws()).append("\n");
+        record.append("ELO Rating: ").append(stats.getEloRating()).append("\n");
+
+        response.setStatus(HttpStatus.OK);
+        response.setBody(record.toString());
+        return response;
+    }
+
 }

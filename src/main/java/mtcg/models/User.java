@@ -23,8 +23,8 @@ public class User {
         this.coins = 20;  // Initial coins as per requirement
         this.stack = new ArrayList<>();
         this.deck = new Deck();
-        this.userStats = new UserStats();
-      //  this.token = "";  // This can be set upon successful login/registration
+        this.userStats = new UserStats(0, 0, 0, 69);
+        this.token = "";
     }
 
     public List<Trading> getOffers() {
