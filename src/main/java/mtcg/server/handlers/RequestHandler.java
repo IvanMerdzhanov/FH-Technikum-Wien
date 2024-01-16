@@ -129,6 +129,9 @@ public class RequestHandler implements Runnable {
             case "/showRecord":
                 response = handleShowMyRecordRequest(request);
                 break;
+            case "/scoreboard":
+                response = handleShowScoreboardRequest(request);
+                break;
             default:
                 response.setStatus(HttpStatus.NOT_FOUND);
                 response.setBody("Endpoint not found");
@@ -1142,5 +1145,38 @@ public class RequestHandler implements Runnable {
         response.setBody(record.toString());
         return response;
     }
+    private HttpResponse handleShowScoreboardRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+
+        try (Connection conn = DatabaseConnector.connect()) {
+            // SQL query to fetch and sort user statistics
+            String sql = "SELECT username, total_wins, total_losses, total_draws, elo_rating FROM user_statistics ORDER BY elo_rating DESC";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            ResultSet rs = stmt.executeQuery();
+
+            StringBuilder scoreboard = new StringBuilder();
+            scoreboard.append(String.format("%-5s %-20s %-10s %-10s %-10s %-10s\n", "Rank", "Username", "Wins", "Losses", "Draws", "ELO"));
+            int rank = 1;
+            while (rs.next()) {
+                String username = rs.getString("username");
+                int totalWins = rs.getInt("total_wins");
+                int totalLosses = rs.getInt("total_losses");
+                int totalDraws = rs.getInt("total_draws");
+                int eloRating = rs.getInt("elo_rating");
+
+                scoreboard.append(String.format("%-5d %-20s %-10d %-10d %-10d %-10d\n", rank++, username, totalWins, totalLosses, totalDraws, eloRating));
+            }
+
+            response.setStatus(HttpStatus.OK);
+            response.setBody(scoreboard.toString());
+        } catch (SQLException e) {
+            e.printStackTrace();
+            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.setBody("Error retrieving scoreboard data");
+        }
+
+        return response;
+    }
+
 
 }
