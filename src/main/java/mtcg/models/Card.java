@@ -3,7 +3,7 @@ package mtcg.models;
 import java.util.UUID;
 
 public abstract class Card {
-    private UUID id; // Unique identifier for the card. Could be a UUID or some other unique string.
+    private UUID id;
     private String name;
     private double damage;
     private ElementType elementType;

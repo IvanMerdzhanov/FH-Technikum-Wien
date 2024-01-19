@@ -7,8 +7,9 @@ public class TradeOfferRequest {
     private Integer requestedCardIndex; // Index of the card requested from the receiving user
     private int offeredCoins; // Coins offered by the offering user
     private int requestedCoins; // Coins requested from the receiving user
-
-    // Getters and setters
+    private String requestedType;
+    private int minimumDamage;
+    private String typeOfOffer;
 
     public String getOfferingUsername() {
         return offeringUsername;
@@ -57,4 +58,27 @@ public class TradeOfferRequest {
     public void setRequestedCoins(int requestedCoins) {
         this.requestedCoins = requestedCoins;
     }
+    public String getRequestedType() {
+        return requestedType;
+    }
+
+    public void setRequestedType(String requestedType) {
+        this.requestedType = requestedType;
+    }
+
+    public int getMinimumDamage() {
+        return minimumDamage;
+    }
+
+    public void setMinimumDamage(int minimumDamage) {
+        this.minimumDamage = minimumDamage;
+    }
+    public String getTypeOfOffer() {
+        return typeOfOffer;
+    }
+
+    public void setTypeOfOffer(String typeOfOffer) {
+        this.typeOfOffer = typeOfOffer;
+    }
+
 }

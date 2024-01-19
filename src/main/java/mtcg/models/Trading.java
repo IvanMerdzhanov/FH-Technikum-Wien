@@ -8,21 +8,22 @@ public class Trading {
     private User receivingUser;
     private Card offeredCard;
     private int offeredCoins;
-    private Card requestedCard;
-    private int requestedCoins;
+    private String requestedType; // "Spell", "Monster", or specific type
+    private int minimumDamage;
+    private String typeOfOffer;
 
-    // Constructor for reciprocal trading
-    public Trading(User offeringUser, User receivingUser, Card offeredCard, int offeredCoins, Card requestedCard, int requestedCoins) {
+    // Constructor for different types of trading
+    public Trading(User offeringUser, User receivingUser, Card offeredCard, int offeredCoins, String requestedType, int minimumDamage, String typeOfOffer) {
         this.id = UUID.randomUUID();
         this.offeringUser = offeringUser;
         this.receivingUser = receivingUser;
         this.offeredCard = offeredCard;
         this.offeredCoins = offeredCoins;
-        this.requestedCard = requestedCard;
-        this.requestedCoins = requestedCoins;
+        this.requestedType = requestedType;
+        this.minimumDamage = minimumDamage;
+        this.typeOfOffer = typeOfOffer;
     }
 
-    // Getters and setters
     public UUID getId() {
         return id;
     }
@@ -37,14 +38,6 @@ public class Trading {
 
     public void setOfferingUser(User offeringUser) {
         this.offeringUser = offeringUser;
-    }
-
-    public User getReceivingUser() {
-        return receivingUser;
-    }
-
-    public void setReceivingUser(User receivingUser) {
-        this.receivingUser = receivingUser;
     }
 
     public Card getOfferedCard() {
@@ -63,49 +56,56 @@ public class Trading {
         this.offeredCoins = offeredCoins;
     }
 
-    public Card getRequestedCard() {
-        return requestedCard;
+    public String getRequestedType() {
+        return requestedType;
     }
 
-    public void setRequestedCard(Card requestedCard) {
-        this.requestedCard = requestedCard;
+    public void setRequestedType(String requiredType) {
+        this.requestedType = requiredType;
     }
 
-    public int getRequestedCoins() {
-        return requestedCoins;
+    public int getMinimumDamage() {
+        return minimumDamage;
     }
 
-    public void setRequestedCoins(int requestedCoins) {
-        this.requestedCoins = requestedCoins;
+    public void setMinimumDamage(int minimumDamage) {
+        this.minimumDamage = minimumDamage;
     }
-    public String getOfferDetails() {
-        StringBuilder details = new StringBuilder();
-        details.append("Offer from: ").append(offeringUser.getUsername());
-        details.append(" to: ").append(receivingUser.getUsername());
+    public String getTypeOfOffer() {
+        return typeOfOffer;
+    }
 
-        if (offeredCard != null || offeredCoins > 0) {
-            details.append(", Offering: ");
-            if (offeredCard != null) {
-                details.append("Card: ").append(offeredCard.getName()).append(" (ID: ").append(offeredCard.getId());
-            }
-            if (offeredCoins > 0) {
-                if (offeredCard != null) details.append(", ");
-                details.append("Coins: ").append(offeredCoins);
-            }
-        }
+    public void setTypeOfOffer(String typeOfOffer) {
+        this.typeOfOffer = typeOfOffer;
+    }
 
-        if (requestedCard != null || requestedCoins > 0) {
-            details.append(", Requesting: ");
-            if (requestedCard != null) {
-                details.append("Card: ").append(requestedCard.getName()).append(" (ID: ").append(requestedCard.getId());
-            }
-            if (requestedCoins > 0) {
-                if (requestedCard != null) details.append(", ");
-                details.append("Coins: ").append(requestedCoins);
-            }
+    public User getReceivingUser() {
+        return receivingUser;
+    }
+
+    public void setReceivingUser(User receivingUser) {
+        this.receivingUser = receivingUser;
+    }
+
+    public String getTradeDetails() {
+        StringBuilder details = new StringBuilder("Trade Offer ID: ").append(id.toString());
+        details.append("\nOffered by: ").append(offeringUser.getUsername());
+
+        switch (typeOfOffer) {
+            case "card-for-card":
+                details.append("\nOffering Card: ").append(offeredCard != null ? offeredCard.getName() : "None");
+                details.append("\nRequesting: ").append(requestedType).append(" with min damage: ").append(minimumDamage);
+                break;
+            case "card-for-coins":
+                details.append("\nOffering Card: ").append(offeredCard != null ? offeredCard.getName() : "None");
+                details.append("\nRequesting Coins: ").append(offeredCoins);
+                break;
+            case "coins-for-card":
+                details.append("\nOffering Coins: ").append(offeredCoins);
+                details.append("\nRequesting: ").append(requestedType).append(" with min damage: ").append(minimumDamage);
+                break;
         }
 
         return details.toString();
     }
-
 }

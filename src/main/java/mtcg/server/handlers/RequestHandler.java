@@ -20,10 +20,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 
@@ -102,9 +99,6 @@ public class RequestHandler implements Runnable {
             case "/selectCard":
                 response = handleSelectCardRequest(request);
                 break;
-            case "/showDeck":
-                response = handleShowDeckRequest(request);
-                break;
             case "/createTradeOffer":
                 response = handleCreateTradeOfferRequest(request);
                 break;
@@ -114,8 +108,11 @@ public class RequestHandler implements Runnable {
             case "/declineOffer":
                 response = handleDeclineOfferRequest(request);
                 break;
-            case "/acceptOffer":
+              case "/acceptOffer":
                 response = handleAcceptTradeOfferRequest(request);
+                break;
+            case "/finalizeTrade":
+                response = handleTradeCardRequest(request);
                 break;
             case "/editProfile":
                 response = handleEditProfileRequest(request);
@@ -477,15 +474,26 @@ public class RequestHandler implements Runnable {
             return response;
         }
 
-        StringBuilder cardList = new StringBuilder();
+        StringBuilder cardList = new StringBuilder("Stack:\n");
+        int index = 1;
+        Map<Card, Integer> cardIndexes = new HashMap<>();
         for (Card card : user.getStack()) {
-            cardList.append(card.getName()).append("\n");
+            cardIndexes.put(card, index);
+            String inDeck = user.getDeck().getCards().contains(card) ? " (In Deck)" : "";
+            cardList.append(index++).append(". ").append(card.getName()).append(" - Damage: ").append(card.getDamage()).append(inDeck).append("\n");
+        }
+
+        cardList.append("\nDeck:\n");
+        for (Card card : user.getDeck().getCards()) {
+            Integer deckIndex = cardIndexes.get(card);
+            cardList.append(deckIndex != null ? deckIndex : "?").append(". ").append(card.getName()).append(" - Damage: ").append(card.getDamage()).append("\n");
         }
 
         response.setStatus(HttpStatus.OK);
-        response.setBody("Your cards:\n" + cardList);
+        response.setBody(cardList.toString());
         return response;
     }
+
     private HttpResponse handleSelectCardRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");
@@ -550,40 +558,7 @@ public class RequestHandler implements Runnable {
         }
         return indexes;
     }
-    private HttpResponse handleShowDeckRequest(HttpRequest request) {
-        HttpResponse response = new HttpResponse();
-        String authHeader = request.getHeaders().get("Authorization");
 
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            response.setStatus(HttpStatus.UNAUTHORIZED);
-            response.setBody("Invalid or missing token");
-            return response;
-        }
-
-        String token = authHeader.substring("Bearer ".length());
-        if (!UserService.isActiveSession(token)) {
-            response.setStatus(HttpStatus.UNAUTHORIZED);
-            response.setBody("Invalid or missing token");
-            return response;
-        }
-
-        String username = UserService.getUsernameForToken(token);
-        User user = UserService.getUser(username);
-        if (user == null) {
-            response.setStatus(HttpStatus.UNAUTHORIZED);
-            response.setBody("User not found");
-            return response;
-        }
-
-        StringBuilder cardList = new StringBuilder();
-        for (Card card : user.getDeck().getCards()) {
-            cardList.append(card.getName()).append("\n");
-        }
-
-        response.setStatus(HttpStatus.OK);
-        response.setBody("Your deck:\n" + cardList);
-        return response;
-    }
     private HttpResponse handleCreateTradeOfferRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");
@@ -612,79 +587,86 @@ public class RequestHandler implements Runnable {
             String offeringUsername = UserService.getUsernameForToken(token);
             User offeringUser = UserService.getUser(offeringUsername);
             User receivingUser = UserService.getUser(tradeOfferRequest.getReceivingUsername());
-
-            // Process the offered card
-            Card offeredCard = null;
-            if (tradeOfferRequest.getOfferedCardIndex() != null) {
-                int cardIndex = tradeOfferRequest.getOfferedCardIndex() - 1;
-                if (cardIndex >= 0 && cardIndex < offeringUser.getStack().size()) {
-                    offeredCard = offeringUser.getStack().get(cardIndex);
-                }
-            }
-
-            // Process the requested card
-            Card requestedCard = null;
-            if (tradeOfferRequest.getRequestedCardIndex() != null) {
-                int cardIndex = tradeOfferRequest.getRequestedCardIndex() - 1;
-                if (cardIndex >= 0 && cardIndex < receivingUser.getStack().size()) {
-                    requestedCard = receivingUser.getStack().get(cardIndex);
-                }
-            }
-
-            if ((tradeOfferRequest.getOfferedCardIndex() != null && (tradeOfferRequest.getOfferedCardIndex() <= 0 || tradeOfferRequest.getOfferedCardIndex() > offeringUser.getStack().size())) ||
-                    (tradeOfferRequest.getRequestedCardIndex() != null && (tradeOfferRequest.getRequestedCardIndex() <= 0 || tradeOfferRequest.getRequestedCardIndex() > receivingUser.getStack().size()))) {
+            if (receivingUser == null) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
-                response.setBody("Invalid card index");
+                response.setBody("Receiving user not found");
                 return response;
             }
 
-            Trading tradeOffer = new Trading(offeringUser, receivingUser, offeredCard, tradeOfferRequest.getOfferedCoins(), requestedCard, tradeOfferRequest.getRequestedCoins());
+            if (receivingUser.getOffers() == null) {
+                receivingUser.setOffers(new ArrayList<>());
+            }
 
-            if (!validateOffer(offeringUser, receivingUser, tradeOffer)) {
+            Trading newTradeOffer = null;
+            switch (tradeOfferRequest.getTypeOfOffer()) {
+                case "card-for-card":
+                    Card offeredCard = validateCardOffer(offeringUser, tradeOfferRequest.getOfferedCardIndex());
+                    if (offeredCard == null) {
+                        response.setStatus(HttpStatus.BAD_REQUEST);
+                        response.setBody("Invalid card for trade or card is in deck");
+                        return response;
+                    }
+                    newTradeOffer = new Trading(offeringUser, receivingUser, offeredCard, 0, tradeOfferRequest.getRequestedType(), tradeOfferRequest.getMinimumDamage(), "card-for-card");
+                    break;
+                case "coins-for-card":
+                    if (!validateCoinOffer(offeringUser, tradeOfferRequest.getOfferedCoins())) {
+                        response.setStatus(HttpStatus.BAD_REQUEST);
+                        response.setBody("Invalid coin amount or insufficient coins");
+                        return response;
+                    }
+                    newTradeOffer = new Trading(offeringUser, receivingUser, null, tradeOfferRequest.getOfferedCoins(), tradeOfferRequest.getRequestedType(), tradeOfferRequest.getMinimumDamage(), "coins-for-card");
+                    break;
+                case "card-for-coins":
+                    offeredCard = validateCardOffer(offeringUser, tradeOfferRequest.getOfferedCardIndex());
+                    if (offeredCard == null) {
+                        response.setStatus(HttpStatus.BAD_REQUEST);
+                        response.setBody("Invalid card for trade or card is in deck");
+                        return response;
+                    }
+                    newTradeOffer = new Trading(offeringUser, receivingUser, offeredCard, tradeOfferRequest.getRequestedCoins(), "Any", 0, "card-for-coins");
+                    break;
+                default:
+                    response.setStatus(HttpStatus.BAD_REQUEST);
+                    response.setBody("Invalid trade offer type");
+                    return response;
+            }
+
+            if (newTradeOffer != null) {
+                receivingUser.getOffers().add(newTradeOffer);
+                response.setStatus(HttpStatus.OK);
+                response.setBody("Trade offer created successfully: " + newTradeOffer.getTradeDetails());
+            } else {
                 response.setStatus(HttpStatus.BAD_REQUEST);
-                response.setBody("Invalid offer, check card ownership or coin balance");
-                return response;
+                response.setBody("Error creating trade offer");
             }
+            return response;
 
-            // Add the trade offer to the receiving user's offers
-            List<Trading> receivingUserOffers = receivingUser.getOffers();
-            if (receivingUserOffers == null) {
-                receivingUserOffers = new ArrayList<>();
-                receivingUser.setOffers(receivingUserOffers);
-            }
-            receivingUserOffers.add(tradeOffer);
-
-            response.setStatus(HttpStatus.OK);
-            response.setBody("Trade offer created successfully");
         } catch (Exception e) {
             e.printStackTrace();
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Error processing trade offer request");
+            return response;
         }
-
-        return response;
     }
 
 
-    private boolean validateOffer(User offeringUser, User receivingUser, Trading tradeOffer) {
-        // Check if offering user has the card and coins they are offering
-        if (tradeOffer.getOfferedCard() != null && !offeringUser.getStack().contains(tradeOffer.getOfferedCard())) {
-            return false; // Offering user doesn't own the card
-        }
-        if (tradeOffer.getOfferedCoins() > 0 && offeringUser.getCoins() < tradeOffer.getOfferedCoins()) {
-            return false; // Offering user doesn't have enough coins
+    private Card validateCardOffer(User offeringUser, int offeredCardIndex) {
+        if (offeredCardIndex <= 0 || offeredCardIndex > offeringUser.getStack().size()) {
+            return null; // Invalid card index
         }
 
-        // Check if receiving user has the card and coins being requested
-        if (tradeOffer.getRequestedCard() != null && !receivingUser.getStack().contains(tradeOffer.getRequestedCard())) {
-            return false; // Receiving user doesn't own the requested card
-        }
-        if (tradeOffer.getRequestedCoins() > 0 && receivingUser.getCoins() < tradeOffer.getRequestedCoins()) {
-            return false; // Receiving user doesn't have enough coins
+        Card offeredCard = offeringUser.getStack().get(offeredCardIndex - 1);
+        if (offeringUser.getDeck().getCards().contains(offeredCard)) {
+            return null; // Card is in the deck, cannot be offered
         }
 
-        return true; // Valid offer
+        return offeredCard; // Valid card
     }
+
+    private boolean validateCoinOffer(User offeringUser, int offeredCoins) {
+        return offeredCoins > 0 && offeringUser.getCoins() >= offeredCoins;
+    }
+
     private HttpResponse handleCheckOffersRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");
@@ -705,16 +687,21 @@ public class RequestHandler implements Runnable {
         String username = UserService.getUsernameForToken(token);
         User user = UserService.getUser(username);
         if (user == null) {
+            System.out.println("Check Offers: User not found for username: " + username);
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("User not found");
             return response;
         }
 
+        System.out.println("Check Offers: Retrieved user: " + username);
         List<Trading> offers = user.getOffers();
         if (offers == null || offers.isEmpty()) {
+            System.out.println("Check Offers: No offers available for user: " + username);
             response.setStatus(HttpStatus.OK);
             response.setBody("No trade offers available");
             return response;
+        } else {
+            System.out.println("Check Offers: Number of offers for user " + username + ": " + offers.size());
         }
 
         StringBuilder offerDetails = new StringBuilder("Trade offers:\n");
@@ -722,7 +709,7 @@ public class RequestHandler implements Runnable {
 
         for (Trading offer : offers) {
             offerDetails.append("Offer ").append(index++).append(": ");
-            offerDetails.append(offer.getOfferDetails()).append("\n");
+            offerDetails.append(offer.getTradeDetails()).append("\n");
         }
 
         response.setStatus(HttpStatus.OK);
@@ -815,8 +802,7 @@ public class RequestHandler implements Runnable {
                 return response;
             }
 
-            int offerIndex = acceptRequest.getOfferIndex() - 1; // Adjust for 0-based indexing
-
+            int offerIndex = acceptRequest.getOfferIndex() - 1;
             if (offerIndex < 0 || offerIndex >= user.getOffers().size()) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid offer index");
@@ -824,43 +810,214 @@ public class RequestHandler implements Runnable {
             }
 
             Trading offer = user.getOffers().get(offerIndex);
-            executeTrade(offer);
-            user.getOffers().remove(offerIndex);
 
-            response.setStatus(HttpStatus.OK);
-            response.setBody("Trade offer accepted successfully");
+            switch (offer.getTypeOfOffer()) {
+                case "card-for-card":
+                    List<Card> eligibleCards = getEligibleCardsForTrade(user, offer.getRequestedType(), offer.getMinimumDamage());
+                    String eligibleCardsDisplay = displayEligibleCards(eligibleCards);
+                    response.setStatus(HttpStatus.OK);
+                    response.setBody(eligibleCardsDisplay);
+                    break;
+                case "coins-for-card":
+                    // Display eligible cards for the user to select from
+                    List<Card> eligibleCardsForCoins = getEligibleCardsForTrade(user, offer.getRequestedType(), offer.getMinimumDamage());
+                    String eligibleCardsDisplayForCoins = displayEligibleCards(eligibleCardsForCoins);
+                    response.setStatus(HttpStatus.OK);
+                    response.setBody(eligibleCardsDisplayForCoins);
+                    break;
+                case "card-for-coins":
+                    transferCoins(user, offer.getOfferingUser(), offer.getOfferedCoins());
+                    response.setStatus(HttpStatus.OK);
+                    response.setBody("Coins transferred successfully");
+                    break;
+                default:
+                    response.setStatus(HttpStatus.BAD_REQUEST);
+                    response.setBody("Invalid trade offer type");
+            }
+            return response;
         } catch (Exception e) {
-            e.printStackTrace();
+            // Error handling...
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Error processing accept trade offer request");
+            return response;
         }
-
-        return response;
     }
 
-    private void executeTrade(Trading offer) {
-        User offeringUser = offer.getOfferingUser();
+    public String displayEligibleCards(List<Card> eligibleCards) {
+        if (eligibleCards.isEmpty()) {
+            return "No eligible cards available for trade.";
+        }
+
+        StringBuilder displayMessage = new StringBuilder("Eligible Cards for Trade:\n");
+        int index = 1;
+        for (Card card : eligibleCards) {
+            displayMessage.append(index).append(". ")
+                    .append(card.getName())
+                    .append(" - Type: ").append(card instanceof MonsterCard ? "Monster" : "Spell")
+                    .append(", Damage: ").append(card.getDamage()).append("\n");
+            index++;
+        }
+
+        return displayMessage.toString();
+    }
+
+    private HttpResponse handleTradeCardRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        String authHeader = request.getHeaders().get("Authorization");
+
+        System.out.println("Starting handleTradeCardRequest");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            System.out.println("Authorization header invalid or missing");
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String token = authHeader.substring("Bearer ".length());
+        if (!UserService.isActiveSession(token)) {
+            System.out.println("Session not active for token: " + token);
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        try {
+            String username = UserService.getUsernameForToken(token);
+            User user = UserService.getUser(username);
+            if (user == null) {
+                System.out.println("Finalize Trade: User not found for username: " + username);
+                System.out.println("User not found: " + username);
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("User not found");
+                return response;
+            }
+
+            System.out.println("Finalize Trade: Retrieved user: " + username);
+            TradeCardIndexRequest tradeCardRequest = JsonSerializer.deserialize(request.getBody(), TradeCardIndexRequest.class);
+
+            if (tradeCardRequest == null) {
+                System.out.println("Deserialization of TradeCardIndexRequest failed");
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid request format");
+                return response;
+            }
+
+            System.out.println("TradeCardIndexRequest deserialized successfully");
+
+            System.out.println("Attempting to execute trade based on card choice.");
+            if (!executeTradeBasedOnCardChoice(user, tradeCardRequest.getTradeOfferIndex(), tradeCardRequest.getCardChoiceIndex())) {
+                System.out.println("Trade execution based on card choice failed.");
+                System.out.println("Finalize Trade: Trade execution failed for user: " + username);
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid trade card index or trade offer index");
+                return response;
+            } else{
+                System.out.println("Finalize Trade: Trade executed successfully for user: " + username);
+            }
+
+            System.out.println("Trade executed successfully.");
+            response.setStatus(HttpStatus.OK);
+            response.setBody("Trade executed successfully");
+            return response;
+        } catch (Exception e) {
+            System.err.println("Exception in handleTradeCardRequest: " + e.getMessage());
+            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.setBody("Error processing trade card request");
+            return response;
+        }
+    }
+
+    private boolean executeTradeBasedOnCardChoice(User user, int tradeOfferIndex, int cardChoiceIndex) {
+        System.out.println("Executing trade for user: " + user.getUsername() + ", Offer Index: " + tradeOfferIndex + ", Card Choice Index: " + cardChoiceIndex);
+
+        if (tradeOfferIndex < 0 || tradeOfferIndex >= user.getOffers().size()) {
+            System.out.println("Invalid trade offer index or no trade offers available.");
+            return false;
+        }
+
+        Trading offer = user.getOffers().get(tradeOfferIndex - 1);
+        String offerType = offer.getTypeOfOffer();
         User receivingUser = offer.getReceivingUser();
 
-        // Transfer the offered card from offering user to receiving user
+        System.out.println("Offer Type: " + offerType);
+
+        // For card-for-card trades
+        if ("card-for-card".equals(offerType)) {
+            System.out.println("Processing card-for-card trade.");
+            List<Card> eligibleCards = getEligibleCardsForTrade(user, offer.getRequestedType(), offer.getMinimumDamage());
+            if (cardChoiceIndex <= 0 || cardChoiceIndex > eligibleCards.size()) {
+                System.out.println("Invalid card choice index.");
+                return false;
+            }
+            Card chosenCard = eligibleCards.get(cardChoiceIndex - 1);
+            System.out.println("Chosen Card: " + chosenCard.getName() + ", Damage: " + chosenCard.getDamage());
+            transferCardToStack(receivingUser, offer.getOfferingUser(), chosenCard);
+        }
+
+        // For coins-for-card trades
+        if ("coins-for-card".equals(offerType)) {
+            System.out.println("Processing coins-for-card trade.");
+            if (offer.getOfferedCoins() > 0) {
+                transferCoins(offer.getOfferingUser(), receivingUser, offer.getOfferedCoins());
+            }
+        }
+
+        // Transfer the offered card to the receiving user if there is one
         if (offer.getOfferedCard() != null) {
-            transferCardToStack(offeringUser, receivingUser, offer.getOfferedCard());
+            System.out.println("Transferring offered card.");
+            transferCardToStack(offer.getOfferingUser(), receivingUser, offer.getOfferedCard());
         }
 
-        // Transfer the requested card from receiving user to offering user
-        if (offer.getRequestedCard() != null) {
-            transferCardToStack(receivingUser, offeringUser, offer.getRequestedCard());
+        user.getOffers().remove(tradeOfferIndex);
+
+        System.out.println("Trade executed successfully.");
+        return true;
+    }
+
+    public List<Card> getEligibleCardsForTrade(User user, String requestedType, int minimumDamage) {
+        List<Card> userStack = user.getStack();
+
+        // Log user's stack
+        System.out.println("User's stack: " + userStack);
+
+        // Filter the stack based on the requested type and minimum damage
+        List<Card> eligibleCards = userStack.stream()
+                .filter(card -> isCardEligibleForTrade(card, requestedType, minimumDamage))
+                .collect(Collectors.toList());
+
+        // Log the filtered eligible cards
+        System.out.println("Eligible cards for trade: " + eligibleCards);
+        return eligibleCards;
+    }
+
+    private boolean isCardEligibleForTrade(Card card, String requestedType, int minimumDamage) {
+        // Log the card being checked
+        System.out.println("Checking card: " + card + " for type: " + requestedType + " and min damage: " + minimumDamage);
+
+        // Check for damage threshold
+        if (card.getDamage() < minimumDamage) {
+            System.out.println("Card damage too low");
+            return false;
         }
 
-        // Transfer the offered coins from offering user to receiving user
-        if (offer.getOfferedCoins() > 0) {
-            transferCoins(offeringUser, receivingUser, offer.getOfferedCoins());
+        // If the requested type is "Any", return true as only damage matters
+        if ("Any".equals(requestedType)) {
+            System.out.println("Type is Any, card eligible");
+            return true;
         }
 
-        // Transfer the requested coins from receiving user to offering user
-        if (offer.getRequestedCoins() > 0) {
-            transferCoins(receivingUser, offeringUser, offer.getRequestedCoins());
+        // Check the instance of the card based on the requested type
+        if ("Monster".equals(requestedType) && card instanceof MonsterCard) {
+            System.out.println("Card is a Monster and eligible");
+            return true;
+        } else if ("Spell".equals(requestedType) && card instanceof SpellCard) {
+            System.out.println("Card is a Spell and eligible");
+            return true;
         }
+
+        System.out.println("Card does not match the requested type");
+        return false; // Card does not match the requested type
     }
 
 
@@ -874,9 +1031,22 @@ public class RequestHandler implements Runnable {
     }
 
     private void transferCardToStack(User fromUser, User toUser, Card card) {
-        fromUser.getStack().remove(card); // Remove card from the offering user's stack
-        toUser.getStack().add(card);      // Add card to the receiving user's stack
+        System.out.println("Transferring card from " + fromUser.getUsername() + " to " + toUser.getUsername());
+        System.out.println("Card to transfer: " + card.getName() + ", Damage: " + card.getDamage());
+
+        // Remove card from the offering user's stack
+        boolean removed = fromUser.getStack().remove(card);
+        System.out.println("Card removed from offering user's stack: " + removed);
+
+        // Add card to the receiving user's stack
+        toUser.getStack().add(card);
+        System.out.println("Card added to receiving user's stack.");
+
+        // Optionally, print out the current stacks for both users for verification
+        System.out.println("Offering user's current stack: " + fromUser.getStack());
+        System.out.println("Receiving user's current stack: " + toUser.getStack());
     }
+
     private boolean isAuthenticated(HttpRequest request) {
         String authHeader = request.getHeaders().get("Authorization");
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -895,11 +1065,6 @@ public class RequestHandler implements Runnable {
         return UserService.getUser(username) != null;
     }
 
-
-    private String extractPasswordFromRequestBody(String requestBody) {
-        LoginRequest loginRequest = JsonSerializer.deserialize(requestBody, LoginRequest.class);
-        return loginRequest != null ? loginRequest.getPassword() : null;
-    }
 
     private HttpResponse unauthorizedResponse() {
         HttpResponse response = new HttpResponse();
