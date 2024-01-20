@@ -129,6 +129,9 @@ public class RequestHandler implements Runnable {
             case "/scoreboard":
                 response = handleShowScoreboardRequest(request);
                 break;
+            case "/wallet":
+                response = handleWalletRequest(request);
+                break;
             default:
                 response.setStatus(HttpStatus.NOT_FOUND);
                 response.setBody("Endpoint not found");
@@ -1383,6 +1386,35 @@ public class RequestHandler implements Runnable {
 
         return response;
     }
+    private HttpResponse handleWalletRequest(HttpRequest request) {
+        HttpResponse response = new HttpResponse();
+        String authHeader = request.getHeaders().get("Authorization");
 
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String token = authHeader.substring("Bearer ".length());
+        if (!UserService.isActiveSession(token)) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("Invalid or missing token");
+            return response;
+        }
+
+        String username = UserService.getUsernameForToken(token);
+        User user = UserService.getUser(username);
+        if (user == null) {
+            response.setStatus(HttpStatus.UNAUTHORIZED);
+            response.setBody("User not found");
+            return response;
+        }
+
+        int userCoins = user.getCoins(); // Retrieve the number of coins the user has
+        response.setStatus(HttpStatus.OK);
+        response.setBody("Coins: " + userCoins); // Respond with the number of coins
+        return response;
+    }
 
 }
