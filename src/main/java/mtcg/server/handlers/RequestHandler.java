@@ -317,6 +317,10 @@ public class RequestHandler implements Runnable {
             User playerOne = UserService.getUser(usernamePlayerOne);
             User playerTwo = UserService.getUser(usernamePlayerTwo);
 
+            clearTradeOffers(playerOne);
+            clearTradeOffers(playerTwo);
+            System.out.println("All trade offers cleared for both players.");
+
             // Log decks
             System.out.println("Player One's Deck: " + playerOne.getDeck().getCards());
             System.out.println("Player Two's Deck: " + playerTwo.getDeck().getCards());
@@ -346,7 +350,12 @@ public class RequestHandler implements Runnable {
         }
         return response;
     }
-
+    private void clearTradeOffers(User user) {
+        if (user != null && user.getOffers() != null) {
+            user.getOffers().clear();
+            System.out.println("Trade offers cleared for user: " + user.getUsername());
+        }
+    }
     private BattleResponseData compileBattleResults(Battle battle, String winner) {
         BattleResponseData responseData = new BattleResponseData();
         responseData.setWinner(winner); // Use the winner from the battle directly
@@ -526,24 +535,36 @@ public class RequestHandler implements Runnable {
             Deck deck = user.getDeck();
             deck.clear(); // Clear the existing deck
 
+            List<Trading> offers = user.getOffers() != null ? user.getOffers() : new ArrayList<>();
+            System.out.println("User's current offers: " + offers);
+
             for (int index : adjustedIndexes) {
                 if (index < 0 || index >= user.getStack().size()) {
+                    System.out.println("Invalid card index: " + index);
                     throw new IllegalArgumentException("Invalid card index: " + (index + 1));
                 }
-                deck.addCard(user.getStack().get(index));
+                Card selectedCard = user.getStack().get(index);
+                System.out.println("Checking card at index " + index + ": " + selectedCard);
+
+                // Check if the card is in the market
+                if (TradeMarket.isCardInMarket(selectedCard)) {
+                    System.out.println("Card at index " + index + " is part of a trade offer and cannot be added to the deck.");
+                    throw new IllegalArgumentException("Card at index " + (index + 1) + " is part of a trade offer and cannot be added to the deck.");
+                }
+
+                deck.addCard(selectedCard);
             }
 
+            System.out.println("Cards added to deck successfully.");
             response.setStatus(HttpStatus.OK);
             response.setBody("Cards selected successfully");
         } catch (Exception e) {
+            System.out.println("Error in handleSelectCardRequest: " + e.getMessage());
             response.setStatus(HttpStatus.BAD_REQUEST);
             response.setBody("Invalid card selection: " + e.getMessage());
-            System.out.println("Error in handleSelectCardRequest: " + e.getMessage());
         }
         return response;
     }
-
-
     public List<Integer> parseCardIndexes(String input) {
         List<Integer> indexes = new ArrayList<>();
         try {
@@ -600,13 +621,14 @@ public class RequestHandler implements Runnable {
             Trading newTradeOffer = null;
             switch (tradeOfferRequest.getTypeOfOffer()) {
                 case "card-for-card":
-                    Card offeredCard = validateCardOffer(offeringUser, tradeOfferRequest.getOfferedCardIndex());
+                    Card offeredCard = validateCardOffer(offeringUser, tradeOfferRequest.getOfferedCardIndex() - 1);
                     if (offeredCard == null) {
                         response.setStatus(HttpStatus.BAD_REQUEST);
                         response.setBody("Invalid card for trade or card is in deck");
                         return response;
                     }
                     newTradeOffer = new Trading(offeringUser, receivingUser, offeredCard, 0, tradeOfferRequest.getRequestedType(), tradeOfferRequest.getMinimumDamage(), "card-for-card");
+                    TradeMarket.addCardToMarket(offeredCard);
                     break;
                 case "coins-for-card":
                     if (!validateCoinOffer(offeringUser, tradeOfferRequest.getOfferedCoins())) {
@@ -624,6 +646,7 @@ public class RequestHandler implements Runnable {
                         return response;
                     }
                     newTradeOffer = new Trading(offeringUser, receivingUser, offeredCard, tradeOfferRequest.getRequestedCoins(), "Any", 0, "card-for-coins");
+                    TradeMarket.addCardToMarket(offeredCard);
                     break;
                 default:
                     response.setStatus(HttpStatus.BAD_REQUEST);
@@ -758,7 +781,10 @@ public class RequestHandler implements Runnable {
                 return response;
             }
 
-            user.getOffers().remove(offerIndex);
+            Trading declinedOffer = user.getOffers().remove(offerIndex);
+            if (declinedOffer.getOfferedCard() != null) {
+                TradeMarket.removeFromMarket(declinedOffer.getOfferedCard());
+            }
             response.setStatus(HttpStatus.OK);
             response.setBody("Trade offer declined successfully");
         } catch (Exception e) {
@@ -817,9 +843,12 @@ public class RequestHandler implements Runnable {
                     String eligibleCardsDisplay = displayEligibleCards(eligibleCards);
                     response.setStatus(HttpStatus.OK);
                     response.setBody(eligibleCardsDisplay);
+                    // Remove the offered card from the market upon acceptance
+                    if (offer.getOfferedCard() != null) {
+                        TradeMarket.removeFromMarket(offer.getOfferedCard());
+                    }
                     break;
                 case "coins-for-card":
-                    // Display eligible cards for the user to select from
                     List<Card> eligibleCardsForCoins = getEligibleCardsForTrade(user, offer.getRequestedType(), offer.getMinimumDamage());
                     String eligibleCardsDisplayForCoins = displayEligibleCards(eligibleCardsForCoins);
                     response.setStatus(HttpStatus.OK);
@@ -865,10 +894,7 @@ public class RequestHandler implements Runnable {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");
 
-        System.out.println("Starting handleTradeCardRequest");
-
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            System.out.println("Authorization header invalid or missing");
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
@@ -876,7 +902,6 @@ public class RequestHandler implements Runnable {
 
         String token = authHeader.substring("Bearer ".length());
         if (!UserService.isActiveSession(token)) {
-            System.out.println("Session not active for token: " + token);
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
@@ -886,53 +911,45 @@ public class RequestHandler implements Runnable {
             String username = UserService.getUsernameForToken(token);
             User user = UserService.getUser(username);
             if (user == null) {
-                System.out.println("Finalize Trade: User not found for username: " + username);
-                System.out.println("User not found: " + username);
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("User not found");
                 return response;
             }
 
-            System.out.println("Finalize Trade: Retrieved user: " + username);
             TradeCardIndexRequest tradeCardRequest = JsonSerializer.deserialize(request.getBody(), TradeCardIndexRequest.class);
 
+            System.out.println("Received tradeOfferIndex: " + tradeCardRequest.getTradeOfferIndex());
+            System.out.println("Received cardChoiceIndex: " + tradeCardRequest.getCardChoiceIndex());
+
             if (tradeCardRequest == null) {
-                System.out.println("Deserialization of TradeCardIndexRequest failed");
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid request format");
                 return response;
             }
 
-            System.out.println("TradeCardIndexRequest deserialized successfully");
-
-            System.out.println("Attempting to execute trade based on card choice.");
             if (!executeTradeBasedOnCardChoice(user, tradeCardRequest.getTradeOfferIndex(), tradeCardRequest.getCardChoiceIndex())) {
-                System.out.println("Trade execution based on card choice failed.");
-                System.out.println("Finalize Trade: Trade execution failed for user: " + username);
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid trade card index or trade offer index");
                 return response;
-            } else{
-                System.out.println("Finalize Trade: Trade executed successfully for user: " + username);
             }
 
-            System.out.println("Trade executed successfully.");
             response.setStatus(HttpStatus.OK);
             response.setBody("Trade executed successfully");
             return response;
         } catch (Exception e) {
-            System.err.println("Exception in handleTradeCardRequest: " + e.getMessage());
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Error processing trade card request");
             return response;
         }
     }
-
     private boolean executeTradeBasedOnCardChoice(User user, int tradeOfferIndex, int cardChoiceIndex) {
         System.out.println("Executing trade for user: " + user.getUsername() + ", Offer Index: " + tradeOfferIndex + ", Card Choice Index: " + cardChoiceIndex);
 
-        if (tradeOfferIndex < 0 || tradeOfferIndex >= user.getOffers().size()) {
-            System.out.println("Invalid trade offer index or no trade offers available.");
+        System.out.println("User's total offers: " + user.getOffers().size());
+        System.out.println("Trade offer index being processed: " + tradeOfferIndex);
+
+        if (tradeOfferIndex - 1 < 0 || tradeOfferIndex - 1 >= user.getOffers().size()) {
+            System.out.println("Trade offer index is out of range.");
             return false;
         }
 
@@ -942,10 +959,10 @@ public class RequestHandler implements Runnable {
 
         System.out.println("Offer Type: " + offerType);
 
-        // For card-for-card trades
+        List<Card> eligibleCards = getEligibleCardsForTrade(user, offer.getRequestedType(), offer.getMinimumDamage());
+        // Handling card-for-card trades
         if ("card-for-card".equals(offerType)) {
             System.out.println("Processing card-for-card trade.");
-            List<Card> eligibleCards = getEligibleCardsForTrade(user, offer.getRequestedType(), offer.getMinimumDamage());
             if (cardChoiceIndex <= 0 || cardChoiceIndex > eligibleCards.size()) {
                 System.out.println("Invalid card choice index.");
                 return false;
@@ -953,23 +970,46 @@ public class RequestHandler implements Runnable {
             Card chosenCard = eligibleCards.get(cardChoiceIndex - 1);
             System.out.println("Chosen Card: " + chosenCard.getName() + ", Damage: " + chosenCard.getDamage());
             transferCardToStack(receivingUser, offer.getOfferingUser(), chosenCard);
-        }
 
-        // For coins-for-card trades
-        if ("coins-for-card".equals(offerType)) {
-            System.out.println("Processing coins-for-card trade.");
-            if (offer.getOfferedCoins() > 0) {
-                transferCoins(offer.getOfferingUser(), receivingUser, offer.getOfferedCoins());
+            // Remove chosen card from receiver's deck if present
+            if (receivingUser.getDeck().getCards().contains(chosenCard)) {
+                receivingUser.getDeck().removeCard(chosenCard);
+                System.out.println("Card removed from receiver's deck: " + chosenCard.getName());
             }
+            // Remove the card from the TradeMarket
+            TradeMarket.removeFromMarket(chosenCard);
+        }
+        // Handling coins-for-card trades
+        if ("coins-for-card".equals(offer.getTypeOfOffer())) {
+
+            System.out.println("Total eligible cards: " + eligibleCards.size());
+            System.out.println("Card choice index being processed: " + cardChoiceIndex);
+
+            if (cardChoiceIndex <= 0 || cardChoiceIndex > eligibleCards.size()) {
+                System.out.println("Invalid card choice index.");
+                return false;
+            }
+            Card chosenCard = eligibleCards.get(cardChoiceIndex - 1);
+
+            transferCoins(offer.getOfferingUser(), receivingUser, offer.getOfferedCoins());
+            transferCardToStack(receivingUser, offer.getOfferingUser(), chosenCard);
+            if (receivingUser.getDeck().getCards().contains(chosenCard)) {
+                receivingUser.getDeck().removeCard(chosenCard);
+                System.out.println("Card removed from receiver's deck: " + chosenCard.getName());
+            }
+            TradeMarket.removeFromMarket(chosenCard);
         }
 
         // Transfer the offered card to the receiving user if there is one
         if (offer.getOfferedCard() != null) {
             System.out.println("Transferring offered card.");
             transferCardToStack(offer.getOfferingUser(), receivingUser, offer.getOfferedCard());
+            // Remove the card from the TradeMarket
+            TradeMarket.removeFromMarket(offer.getOfferedCard());
         }
 
-        user.getOffers().remove(tradeOfferIndex);
+        // Remove the executed offer from the user's list of offers
+        user.getOffers().remove(tradeOfferIndex - 1);
 
         System.out.println("Trade executed successfully.");
         return true;
@@ -992,8 +1032,11 @@ public class RequestHandler implements Runnable {
     }
 
     private boolean isCardEligibleForTrade(Card card, String requestedType, int minimumDamage) {
-        // Log the card being checked
-        System.out.println("Checking card: " + card + " for type: " + requestedType + " and min damage: " + minimumDamage);
+        // Check if the card is already in the market
+        if (TradeMarket.isCardInMarket(card)) {
+            System.out.println("Card is in the market and not eligible");
+            return false;
+        }
 
         // Check for damage threshold
         if (card.getDamage() < minimumDamage) {
@@ -1019,8 +1062,6 @@ public class RequestHandler implements Runnable {
         System.out.println("Card does not match the requested type");
         return false; // Card does not match the requested type
     }
-
-
     private void transferCoins(User fromUser, User toUser, int amount) {
         if (fromUser.getCoins() >= amount) {
             fromUser.setCoins(fromUser.getCoins() - amount);
