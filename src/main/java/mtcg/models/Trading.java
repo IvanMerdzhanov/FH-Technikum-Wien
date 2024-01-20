@@ -11,6 +11,7 @@ public class Trading {
     private String requestedType; // "Spell", "Monster", or specific type
     private int minimumDamage;
     private String typeOfOffer;
+    private String state;
 
     // Constructor for different types of trading
     public Trading(User offeringUser, User receivingUser, Card offeredCard, int offeredCoins, String requestedType, int minimumDamage, String typeOfOffer) {
@@ -85,6 +86,14 @@ public class Trading {
 
     public void setReceivingUser(User receivingUser) {
         this.receivingUser = receivingUser;
+    }
+
+    public String getState() {
+        return state;
+    }
+
+    public void setState(String state) {
+        this.state = state;
     }
 
     public String getTradeDetails() {

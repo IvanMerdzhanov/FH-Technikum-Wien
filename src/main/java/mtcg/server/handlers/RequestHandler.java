@@ -43,16 +43,8 @@ public class RequestHandler implements Runnable {
             // Log the received URI and method for debugging
             System.out.println("Received request: Method = " + request.getMethod() + ", URI = " + request.getUri());
 
-            // Determine the response based on the URI and game state
-            HttpResponse response;
-            if (isGameReady || "/register".equals(request.getUri()) || "/login".equals(request.getUri()) || "/logout".equals(request.getUri()) || "/endgame".equals(request.getUri())){
-                response = handleRequestBasedOnUri(request);
-            } else {
-                // Restrict access if the game is not ready
-                response = new HttpResponse();
-                response.setStatus(HttpStatus.NOT_FOUND);
-                response.setBody("Game not ready or endpoint not found");
-            }
+            // Handle the request based on the URI
+            HttpResponse response = handleRequestBasedOnUri(request);
 
             // Send the response
             out.print(response.buildResponse());
@@ -68,7 +60,6 @@ public class RequestHandler implements Runnable {
             }
         }
     }
-
 
     private HttpResponse handleRequestBasedOnUri(HttpRequest request) {
         HttpResponse response = new HttpResponse();
@@ -291,6 +282,12 @@ public class RequestHandler implements Runnable {
 
     private HttpResponse handleBattleRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
+
+        if (!isGameReady()) {
+            response.setStatus(HttpStatus.BAD_REQUEST);
+            response.setBody("Not enough players for battle");
+            return response;
+        }
         try {
             System.out.println("Handling battle request...");
 
@@ -352,6 +349,9 @@ public class RequestHandler implements Runnable {
             response.setBody("Error processing battle request");
         }
         return response;
+    }
+    private boolean isGameReady() {
+        return UserService.getActiveSessionsCount() >= 2;
     }
     private void clearTradeOffers(User user) {
         if (user != null && user.getOffers() != null) {
@@ -460,7 +460,6 @@ public class RequestHandler implements Runnable {
         response.setBody("Package acquired successfully");
         return response;
     }
-
     private HttpResponse handleShowMyCardsRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");
@@ -486,19 +485,31 @@ public class RequestHandler implements Runnable {
             return response;
         }
 
-        StringBuilder cardList = new StringBuilder("Stack:\n");
-        int index = 1;
+        StringBuilder cardList = new StringBuilder();
         Map<Card, Integer> cardIndexes = new HashMap<>();
-        for (Card card : user.getStack()) {
-            cardIndexes.put(card, index);
-            String inDeck = user.getDeck().getCards().contains(card) ? " (In Deck)" : "";
-            cardList.append(index++).append(". ").append(card.getName()).append(" - Damage: ").append(card.getDamage()).append(inDeck).append("\n");
+        int index = 1;
+
+        // Check for empty stack
+        cardList.append("Stack:\n");
+        if (user.getStack().isEmpty()) {
+            cardList.append("Your stack is empty.\n");
+        } else {
+            for (Card card : user.getStack()) {
+                cardIndexes.put(card, index);
+                String inDeck = user.getDeck().getCards().contains(card) ? " (In Deck)" : "";
+                cardList.append(index++).append(". ").append(card.getName()).append(" - Damage: ").append(card.getDamage()).append(inDeck).append("\n");
+            }
         }
 
+        // Check for empty deck
         cardList.append("\nDeck:\n");
-        for (Card card : user.getDeck().getCards()) {
-            Integer deckIndex = cardIndexes.get(card);
-            cardList.append(deckIndex != null ? deckIndex : "?").append(". ").append(card.getName()).append(" - Damage: ").append(card.getDamage()).append("\n");
+        if (user.getDeck().getCards().isEmpty()) {
+            cardList.append("Your deck is empty.\n");
+        } else {
+            for (Card card : user.getDeck().getCards()) {
+                Integer deckIndex = cardIndexes.get(card);
+                cardList.append(deckIndex != null ? deckIndex : "?").append(". ").append(card.getName()).append(" - Damage: ").append(card.getDamage()).append("\n");
+            }
         }
 
         response.setStatus(HttpStatus.OK);
@@ -850,17 +861,32 @@ public class RequestHandler implements Runnable {
                     if (offer.getOfferedCard() != null) {
                         TradeMarket.removeFromMarket(offer.getOfferedCard());
                     }
+                    offer.setState("ACCEPTED");
                     break;
                 case "coins-for-card":
                     List<Card> eligibleCardsForCoins = getEligibleCardsForTrade(user, offer.getRequestedType(), offer.getMinimumDamage());
                     String eligibleCardsDisplayForCoins = displayEligibleCards(eligibleCardsForCoins);
                     response.setStatus(HttpStatus.OK);
                     response.setBody(eligibleCardsDisplayForCoins);
+                    offer.setState("ACCEPTED");
                     break;
                 case "card-for-coins":
-                    transferCoins(user, offer.getOfferingUser(), offer.getOfferedCoins());
-                    response.setStatus(HttpStatus.OK);
-                    response.setBody("Coins transferred successfully");
+                    Card offeredCard = offer.getOfferedCard();
+                    int offeredCoins = offer.getOfferedCoins();
+                    if (user.getCoins() >= offeredCoins) {
+                        // Transfer card from offering user to receiving user
+                        transferCardToStack(offer.getOfferingUser(), user, offeredCard);
+                        // Transfer coins from receiving user to offering user
+                        transferCoins(user, offer.getOfferingUser(), offeredCoins);
+                        response.setStatus(HttpStatus.OK);
+                        response.setBody("Card and coins trade completed successfully");
+                        // Remove the card from the TradeMarket
+                        TradeMarket.removeFromMarket(offeredCard);
+                        offer.setState("FINALIZED");
+                    } else {
+                        response.setStatus(HttpStatus.BAD_REQUEST);
+                        response.setBody("Insufficient coins for the trade");
+                    }
                     break;
                 default:
                     response.setStatus(HttpStatus.BAD_REQUEST);
@@ -936,6 +962,13 @@ public class RequestHandler implements Runnable {
                 return response;
             }
 
+            int tradeOfferIndex = tradeCardRequest.getTradeOfferIndex() - 1;
+            Trading offer = user.getOffers().get(tradeOfferIndex);
+            if (!"ACCEPTED".equals(offer.getState()) || "card-for-coins".equals(offer.getTypeOfOffer())) {
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid operation or offer not in the correct state");
+                return response;
+            }
             response.setStatus(HttpStatus.OK);
             response.setBody("Trade executed successfully");
             return response;
