@@ -29,7 +29,7 @@ public class RequestHandler implements Runnable {
     private final Socket clientSocket;
     private final DatabaseConnector databaseConnector; // Added field for DatabaseConnector
     private final PackageService packageService;
-    IUserService userService;
+    private final IUserService userService;
 
 
     // Modified constructor to accept DatabaseConnector and IUserService as parameters
@@ -37,7 +37,7 @@ public class RequestHandler implements Runnable {
         this.clientSocket = clientSocket;
         this.databaseConnector = databaseConnector;
         this.packageService = new PackageService(databaseConnector);
-        this.userService = userService; // Use the passed userService
+        this.userService = userService != null ? userService : UserService.getInstance();
     }
 
 
@@ -228,10 +228,9 @@ public class RequestHandler implements Runnable {
             String password = loginRequest.getPassword();
             System.out.println("Login request received for username: " + username);
 
-            // Check if the user is already logged in
+            // Check if userService is not null and if the user is already logged in
             System.out.println("Checking if user " + username + " is already logged in");
-            System.out.println("userService is " + (userService == null ? "null" : "initialized"));
-            if (userService.isActiveSession(username)) {
+            if (userService != null && userService.isActiveSession(username)) {
                 System.out.println("User " + username + " is already logged in");
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("User already logged in");
@@ -268,8 +267,11 @@ public class RequestHandler implements Runnable {
                             User user = new User(username, storedPassword);
                             user.setToken(token);
                             user.setUserStats(stats);
-                            userService.updateUser(user);
-                            userService.addSession(token, username);
+
+                            if (userService != null) {
+                                userService.updateUser(user);
+                                userService.addSession(token, username);
+                            }
                             System.out.println("User " + username + " updated and session added");
 
                             response.setBody("Login successful. Token: " + token);
@@ -295,7 +297,6 @@ public class RequestHandler implements Runnable {
         }
         return response;
     }
-
 
     private HttpResponse handleBattleRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
