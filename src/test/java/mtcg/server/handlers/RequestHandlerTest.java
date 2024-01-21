@@ -1,15 +1,16 @@
 package mtcg.server.handlers;
 
+import mtcg.models.Card;
+import mtcg.models.Deck;
+import mtcg.models.User;
+import mtcg.models.UserStats;
 import mtcg.services.IUserService;
-import mtcg.services.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import mtcg.server.database.DatabaseConnector;
 import org.springframework.security.crypto.bcrypt.BCrypt;
-import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 import org.junit.runner.RunWith;
@@ -20,6 +21,8 @@ import java.net.Socket;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -65,6 +68,7 @@ class RequestHandlerTest {
 
         // Create an instance of RequestHandler with mocked dependencies
         requestHandler = new RequestHandler(clientSocket, databaseConnector, mockUserService);
+
     }
 
     private void setUpHttpRequest(String httpRequest) throws IOException {
@@ -142,18 +146,67 @@ class RequestHandlerTest {
         // Mock the behavior of getActiveSessionsCount() method
         when(mockUserService.getActiveSessionsCount()).thenReturn(1);
 
-        // Mock the HTTP request for starting a battle
+        System.out.println("Setting up HTTP request for battle with sufficient players");
         String battleRequestJson = "{\"tokenPlayerOne\":\"token1\", \"tokenPlayerTwo\":\"token2\"}";
         String httpRequest = "POST /battle HTTP/1.1\r\nContent-Length: ...\r\n\r\n" + battleRequestJson;
-        InputStream input = new ByteArrayInputStream(httpRequest.getBytes());
-        when(clientSocket.getInputStream()).thenReturn(input);
+        setUpHttpRequest(httpRequest);
 
-        // Run the RequestHandler
+        System.out.println("Running requestHandler for sufficient players test");
         requestHandler.run();
 
         // Verify the response
         String response = outputCapture.toString();
+        System.out.println("Response for battle with sufficient players: " + response);
+        // Verify the response indicates not enough players
         assertTrue(response.contains("Not enough players for battle"), "Expected response to indicate not enough players for battle");
+
+    }
+    @Test
+    void testStartBattleWithSufficientPlayers() throws Exception {
+        // Mock UserService methods
+        when(mockUserService.getActiveSessionsCount()).thenReturn(2); // Simulate at least 2 active sessions
+        when(mockUserService.isActiveSession("token1")).thenReturn(true);
+        when(mockUserService.isActiveSession("token2")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("token1")).thenReturn("newUser1");
+        when(mockUserService.getUsernameForToken("token2")).thenReturn("newUser2");
+
+        User mockUser1 = mock(User.class);
+        User mockUser2 = mock(User.class);
+        Deck mockDeck1 = mock(Deck.class);
+        Deck mockDeck2 = mock(Deck.class);
+
+        // Set up mock behavior for the decks
+        List<Card> mockCards1 = new ArrayList<>(); // Add mock cards as needed
+        List<Card> mockCards2 = new ArrayList<>(); // Add mock cards as needed
+        when(mockDeck1.getCards()).thenReturn(mockCards1);
+        when(mockDeck2.getCards()).thenReturn(mockCards2);
+
+        // Ensure the mock users return these deck objects
+        when(mockUser1.getDeck()).thenReturn(mockDeck1);
+        when(mockUser2.getDeck()).thenReturn(mockDeck2);
+
+        UserStats mockStats1 = mock(UserStats.class);
+        UserStats mockStats2 = mock(UserStats.class);
+
+        when(mockUser1.getUserStats()).thenReturn(mockStats1);
+        when(mockUser2.getUserStats()).thenReturn(mockStats2);
+
+        // Return the mock User objects when UserService.getUser() is called
+        when(mockUserService.getUser("newUser1")).thenReturn(mockUser1);
+        when(mockUserService.getUser("newUser2")).thenReturn(mockUser2);
+
+        // Mock the HTTP request for starting a battle
+        System.out.println("Setting up HTTP request for battle with enough players");
+        String battleRequestJson = "{\"tokenPlayerOne\":\"token1\", \"tokenPlayerTwo\":\"token2\"}";
+        String httpRequest = "POST /battle HTTP/1.1\r\nContent-Length: ...\r\n\r\n" + battleRequestJson;
+        setUpHttpRequest(httpRequest);
+
+        System.out.println("Running requestHandler for not enough players test");
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        System.out.println("Response for battle without enough players: " + response);
     }
 
 }

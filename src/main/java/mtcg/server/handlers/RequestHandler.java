@@ -29,16 +29,17 @@ public class RequestHandler implements Runnable {
     private final Socket clientSocket;
     private final DatabaseConnector databaseConnector; // Added field for DatabaseConnector
     private final PackageService packageService;
-    IUserService userService = new UserService();
+    IUserService userService;
 
 
-    // Modified constructor to accept DatabaseConnector as a parameter
+    // Modified constructor to accept DatabaseConnector and IUserService as parameters
     public RequestHandler(Socket clientSocket, DatabaseConnector databaseConnector, IUserService userService) {
         this.clientSocket = clientSocket;
-        this.databaseConnector = databaseConnector; // Assign the passed DatabaseConnector to the field
+        this.databaseConnector = databaseConnector;
         this.packageService = new PackageService(databaseConnector);
-        this.userService = userService;
+        this.userService = userService; // Use the passed userService
     }
+
 
     @Override
     public void run() {
@@ -213,10 +214,11 @@ public class RequestHandler implements Runnable {
     public HttpResponse handleLoginRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         try {
+            System.out.println("Deserializing login request");
             LoginRequest loginRequest = JsonSerializer.deserialize(request.getBody(), LoginRequest.class);
-            System.out.println("Login request received for username: " + loginRequest.getUsername());
 
             if (loginRequest == null) {
+                System.out.println("Login request deserialization failed");
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid login data");
                 return response;
@@ -224,15 +226,19 @@ public class RequestHandler implements Runnable {
 
             String username = loginRequest.getUsername();
             String password = loginRequest.getPassword();
+            System.out.println("Login request received for username: " + username);
 
             // Check if the user is already logged in
-            if (userService.isActiveSession(username)) { // Use UserService to check active session
-                System.out.println("User " + username + " is already logged in.");
+            System.out.println("Checking if user " + username + " is already logged in");
+            System.out.println("userService is " + (userService == null ? "null" : "initialized"));
+            if (userService.isActiveSession(username)) {
+                System.out.println("User " + username + " is already logged in");
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("User already logged in");
                 return response;
             }
 
+            System.out.println("Connecting to database");
             try (Connection conn = databaseConnector.connect()) {
                 PreparedStatement stmt = conn.prepareStatement("SELECT password FROM \"users\" WHERE username = ?");
                 stmt.setString(1, username);
@@ -240,13 +246,11 @@ public class RequestHandler implements Runnable {
 
                 if (rs.next()) {
                     String storedPassword = rs.getString("password");
+                    System.out.println("User found in database. Verifying password for " + username);
                     if (PasswordUtil.checkPassword(password, storedPassword)) {
-                        System.out.println("Password check passed for user: " + username);
-                        // Generate a unique token
+                        System.out.println("Password check passed for " + username);
                         String token = UUID.randomUUID().toString();
-                        System.out.println("Generated token: " + token + " for user: " + username);
-                        User user = new User(username, storedPassword);
-                        user.setToken(token);
+                        System.out.println("Generated token: " + token);
 
                         PreparedStatement statsStmt = conn.prepareStatement("SELECT total_wins, total_losses, total_draws, elo_rating FROM user_statistics WHERE username = ?");
                         statsStmt.setString(1, username);
@@ -259,27 +263,32 @@ public class RequestHandler implements Runnable {
                                     statsRs.getInt("total_draws"),
                                     statsRs.getInt("elo_rating")
                             );
+                            System.out.println("UserStats retrieved for " + username);
 
-                            // Update User object with UserStats
+                            User user = new User(username, storedPassword);
+                            user.setToken(token);
                             user.setUserStats(stats);
+                            userService.updateUser(user);
+                            userService.addSession(token, username);
+                            System.out.println("User " + username + " updated and session added");
+
+                            response.setBody("Login successful. Token: " + token);
+                        } else {
+                            System.out.println("UserStats not found for " + username);
                         }
-                        userService.updateUser(user); // Add user to UserService
-                        userService.addSession(token, username);
-
-                        System.out.println("Session added for user: " + username + ", Token: " + token);
-                        System.out.println("Current active sessions: " + userService.getActiveSessions());
-
-                        response.setBody("Login successful. Token: " + token);
                     } else {
+                        System.out.println("Password check failed for " + username);
                         response.setStatus(HttpStatus.BAD_REQUEST);
                         response.setBody("Invalid credentials");
                     }
                 } else {
+                    System.out.println("User " + username + " not found in database");
                     response.setStatus(HttpStatus.BAD_REQUEST);
                     response.setBody("User not found");
                 }
             }
         } catch (SQLException e) {
+            System.err.println("SQL Exception in handleLoginRequest: " + e.getMessage());
             e.printStackTrace();
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Login failed due to server error");
@@ -291,7 +300,10 @@ public class RequestHandler implements Runnable {
     private HttpResponse handleBattleRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
 
+        System.out.println("Entering handleBattleRequest");
+
         if (!isGameReady()) {
+            System.out.println("Game is not ready: Not enough players");
             response.setStatus(HttpStatus.BAD_REQUEST);
             response.setBody("Not enough players for battle");
             return response;
@@ -302,6 +314,7 @@ public class RequestHandler implements Runnable {
             // Deserialize the request body
             BattleRequestData battleData = JsonSerializer.deserialize(request.getBody(), BattleRequestData.class);
             if (battleData == null) {
+                System.out.println("Failed to deserialize battle data");
                 throw new RuntimeException("Failed to deserialize battle data");
             }
 
@@ -312,6 +325,7 @@ public class RequestHandler implements Runnable {
 
             // Validate tokens
             if (!userService.isActiveSession(tokenPlayerOne) || !userService.isActiveSession(tokenPlayerTwo)) {
+                System.out.println("One or both tokens are invalid or missing");
                 response.setStatus(HttpStatus.UNAUTHORIZED);
                 response.setBody("One or both tokens are invalid or missing");
                 return response;
@@ -325,6 +339,11 @@ public class RequestHandler implements Runnable {
             User playerOne = userService.getUser(usernamePlayerOne);
             User playerTwo = userService.getUser(usernamePlayerTwo);
 
+            if (playerOne == null || playerTwo == null) {
+                System.out.println("One or both users are null");
+                // Handle the case where one or both users are null
+            }
+
             clearTradeOffers(playerOne);
             clearTradeOffers(playerTwo);
             System.out.println("All trade offers cleared for both players.");
@@ -336,7 +355,7 @@ public class RequestHandler implements Runnable {
             // Initiate battle
             Battle battle = new Battle(playerOne, playerTwo);
             String winner = battle.startBattle(); // This should now return the winner's username
-            System.out.println("Battle started...");
+            System.out.println("Battle started between " + usernamePlayerOne + " and " + usernamePlayerTwo);
 
             // Update statistics in the database after the battle
             try (Connection conn = databaseConnector.connect()) {
@@ -356,11 +375,25 @@ public class RequestHandler implements Runnable {
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Error processing battle request");
         }
+        System.out.println("Exiting handleBattleRequest");
         return response;
     }
+
     private boolean isGameReady() {
-        return userService.getActiveSessionsCount() >= 2;
+        System.out.println("Checking if game is ready");
+        int activeSessionCount = userService.getActiveSessionsCount();
+        System.out.println("Active session count: " + activeSessionCount);
+
+        if (activeSessionCount >= 2) {
+            System.out.println("Game is ready with sufficient players.");
+            return true;
+        } else {
+            System.out.println("Game is not ready: Not enough players. Active sessions: " + activeSessionCount);
+            return false;
+        }
     }
+
+
     private void clearTradeOffers(User user) {
         if (user != null && user.getOffers() != null) {
             user.getOffers().clear();
