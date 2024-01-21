@@ -1,13 +1,14 @@
 package mtcg.server.handlers;
 
 import mtcg.models.*;
-import mtcg.server.database.DatabaseConnector;
+import mtcg.server.database.*;
 import mtcg.server.http.HttpRequest;
 import mtcg.server.http.HttpResponse;
 import mtcg.server.http.HttpStatus;
 import mtcg.server.models.*;
 import mtcg.server.util.JsonSerializer;
 import mtcg.server.util.PasswordUtil;
+import mtcg.services.IUserService;
 import mtcg.services.PackageService;
 import mtcg.services.UserService;
 
@@ -26,10 +27,17 @@ import java.util.stream.Collectors;
 
 public class RequestHandler implements Runnable {
     private final Socket clientSocket;
-    boolean isGameReady = UserService.getActiveSessionsCount() >= 2;
+    private final DatabaseConnector databaseConnector; // Added field for DatabaseConnector
+    private final PackageService packageService;
+    IUserService userService = new UserService();
 
-    public RequestHandler(Socket clientSocket) {
+
+    // Modified constructor to accept DatabaseConnector as a parameter
+    public RequestHandler(Socket clientSocket, DatabaseConnector databaseConnector, IUserService userService) {
         this.clientSocket = clientSocket;
+        this.databaseConnector = databaseConnector; // Assign the passed DatabaseConnector to the field
+        this.packageService = new PackageService(databaseConnector);
+        this.userService = userService;
     }
 
     @Override
@@ -136,7 +144,7 @@ public class RequestHandler implements Runnable {
         HttpResponse response = new HttpResponse();
 
         // Clear all users and active sessions
-        UserService.clearAllUsersAndSessions();
+        userService.clearAllUsersAndSessions();
 
         // Reset all cards in the database to taken = false
         resetAllCardsInDatabase();
@@ -148,7 +156,7 @@ public class RequestHandler implements Runnable {
 
     private void resetAllCardsInDatabase() {
         String updateQuery = "UPDATE cards SET taken = false";
-        try (Connection conn = DatabaseConnector.connect();
+        try (Connection conn = databaseConnector.connect();
              PreparedStatement updateStmt = conn.prepareStatement(updateQuery)) {
             updateStmt.executeUpdate();
         } catch (SQLException e) {
@@ -161,7 +169,7 @@ public class RequestHandler implements Runnable {
         HttpResponse response = new HttpResponse();
         try {
             RegistrationRequest regRequest = JsonSerializer.deserialize(request.getBody(), RegistrationRequest.class);
-            if (regRequest == null) {
+            if (regRequest == null || regRequest.getUsername() == null || regRequest.getPassword() == null) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid registration data");
                 return response;
@@ -170,7 +178,7 @@ public class RequestHandler implements Runnable {
             String username = regRequest.getUsername();
             String password = regRequest.getPassword();
 
-            try (Connection conn = DatabaseConnector.connect()) {
+            try (Connection conn = databaseConnector.connect()) {
                 PreparedStatement checkStmt = conn.prepareStatement("SELECT * FROM \"users\" WHERE username = ?");
                 checkStmt.setString(1, username);
                 ResultSet rs = checkStmt.executeQuery();
@@ -218,14 +226,14 @@ public class RequestHandler implements Runnable {
             String password = loginRequest.getPassword();
 
             // Check if the user is already logged in
-            if (UserService.isActiveSession(username)) { // Use UserService to check active session
+            if (userService.isActiveSession(username)) { // Use UserService to check active session
                 System.out.println("User " + username + " is already logged in.");
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("User already logged in");
                 return response;
             }
 
-            try (Connection conn = DatabaseConnector.connect()) {
+            try (Connection conn = databaseConnector.connect()) {
                 PreparedStatement stmt = conn.prepareStatement("SELECT password FROM \"users\" WHERE username = ?");
                 stmt.setString(1, username);
                 ResultSet rs = stmt.executeQuery();
@@ -255,11 +263,11 @@ public class RequestHandler implements Runnable {
                             // Update User object with UserStats
                             user.setUserStats(stats);
                         }
-                        UserService.updateUser(user); // Add user to UserService
-                        UserService.addSession(token, username);
+                        userService.updateUser(user); // Add user to UserService
+                        userService.addSession(token, username);
 
                         System.out.println("Session added for user: " + username + ", Token: " + token);
-                        System.out.println("Current active sessions: " + UserService.getActiveSessions());
+                        System.out.println("Current active sessions: " + userService.getActiveSessions());
 
                         response.setBody("Login successful. Token: " + token);
                     } else {
@@ -303,19 +311,19 @@ public class RequestHandler implements Runnable {
             System.out.println("Tokens received: Player One - " + tokenPlayerOne + ", Player Two - " + tokenPlayerTwo);
 
             // Validate tokens
-            if (!UserService.isActiveSession(tokenPlayerOne) || !UserService.isActiveSession(tokenPlayerTwo)) {
+            if (!userService.isActiveSession(tokenPlayerOne) || !userService.isActiveSession(tokenPlayerTwo)) {
                 response.setStatus(HttpStatus.UNAUTHORIZED);
                 response.setBody("One or both tokens are invalid or missing");
                 return response;
             }
 
             // Retrieve users and log their details
-            String usernamePlayerOne = UserService.getUsernameForToken(tokenPlayerOne);
-            String usernamePlayerTwo = UserService.getUsernameForToken(tokenPlayerTwo);
+            String usernamePlayerOne = userService.getUsernameForToken(tokenPlayerOne);
+            String usernamePlayerTwo = userService.getUsernameForToken(tokenPlayerTwo);
             System.out.println("Users participating: Player One - " + usernamePlayerOne + ", Player Two - " + usernamePlayerTwo);
 
-            User playerOne = UserService.getUser(usernamePlayerOne);
-            User playerTwo = UserService.getUser(usernamePlayerTwo);
+            User playerOne = userService.getUser(usernamePlayerOne);
+            User playerTwo = userService.getUser(usernamePlayerTwo);
 
             clearTradeOffers(playerOne);
             clearTradeOffers(playerTwo);
@@ -331,7 +339,7 @@ public class RequestHandler implements Runnable {
             System.out.println("Battle started...");
 
             // Update statistics in the database after the battle
-            try (Connection conn = DatabaseConnector.connect()) {
+            try (Connection conn = databaseConnector.connect()) {
                 battle.finishBattle(winner, conn); // Pass the winner and connection to update stats
             } catch (SQLException e) {
                 System.err.println("Database error while updating stats: " + e.getMessage());
@@ -351,7 +359,7 @@ public class RequestHandler implements Runnable {
         return response;
     }
     private boolean isGameReady() {
-        return UserService.getActiveSessionsCount() >= 2;
+        return userService.getActiveSessionsCount() >= 2;
     }
     private void clearTradeOffers(User user) {
         if (user != null && user.getOffers() != null) {
@@ -377,18 +385,18 @@ public class RequestHandler implements Runnable {
             }
 
             String token = authHeader.substring("Bearer ".length());
-            if (!UserService.isActiveSession(token)) {
+            if (!userService.isActiveSession(token)) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid or missing token");
                 return response;
             }
 
-            String username = UserService.getUsernameForToken(token);
-            User user = UserService.getUser(username);
+            String username = userService.getUsernameForToken(token);
+            User user = userService.getUser(username);
             if (user != null) {
                 releaseUserCards(user);
-                UserService.removeSession(token);
-                UserService.removeUser(user);
+                userService.removeSession(token);
+                userService.removeUser(user);
             }
 
             response.setStatus(HttpStatus.OK);
@@ -404,8 +412,7 @@ public class RequestHandler implements Runnable {
     private void releaseUserCards(User user) {
         // Logic to set user's cards as not taken
         for (Card card : user.getStack()) {
-            // Assuming a method in PackageService to update a card's taken status
-            PackageService.setCardAsNotTaken(card.getId());
+            packageService.setCardAsNotTaken(card.getId());
         }
     }
 
@@ -423,16 +430,16 @@ public class RequestHandler implements Runnable {
         // Extract the token from the header
         String token = authHeader.substring("Bearer ".length());
 
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             System.out.println("Token invalid or missing for token: " + token);
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
-        String username = UserService.getUsernameForToken(token);
+        String username = userService.getUsernameForToken(token);
 
-        User user = UserService.getUser(username);
+        User user = userService.getUser(username);
 
         if (user == null) {
             System.out.println("User not found for username: " + username);
@@ -451,10 +458,10 @@ public class RequestHandler implements Runnable {
 
         user.spendCoins();
 
-        List<Card> packageCards = PackageService.getPackageCards();
+        List<Card> packageCards = packageService.getPackageCards();
 
         user.getStack().addAll(packageCards);
-        UserService.updateUser(user);
+        userService.updateUser(user);
 
         response.setStatus(HttpStatus.OK);
         response.setBody("Package acquired successfully");
@@ -471,14 +478,14 @@ public class RequestHandler implements Runnable {
         }
 
         String token = authHeader.substring("Bearer ".length());
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
-        String username = UserService.getUsernameForToken(token);
-        User user = UserService.getUser(username);
+        String username = userService.getUsernameForToken(token);
+        User user = userService.getUser(username);
         if (user == null) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("User not found");
@@ -528,14 +535,14 @@ public class RequestHandler implements Runnable {
         }
 
         String token = authHeader.substring("Bearer ".length());
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
-        String username = UserService.getUsernameForToken(token);
-        User user = UserService.getUser(username);
+        String username = userService.getUsernameForToken(token);
+        User user = userService.getUser(username);
         if (user == null) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("User not found");
@@ -605,7 +612,7 @@ public class RequestHandler implements Runnable {
         }
 
         String token = authHeader.substring("Bearer ".length());
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
@@ -619,9 +626,9 @@ public class RequestHandler implements Runnable {
                 return response;
             }
 
-            String offeringUsername = UserService.getUsernameForToken(token);
-            User offeringUser = UserService.getUser(offeringUsername);
-            User receivingUser = UserService.getUser(tradeOfferRequest.getReceivingUsername());
+            String offeringUsername = userService.getUsernameForToken(token);
+            User offeringUser = userService.getUser(offeringUsername);
+            User receivingUser = userService.getUser(tradeOfferRequest.getReceivingUsername());
             if (receivingUser == null) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Receiving user not found");
@@ -715,14 +722,14 @@ public class RequestHandler implements Runnable {
         }
 
         String token = authHeader.substring("Bearer ".length());
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
-        String username = UserService.getUsernameForToken(token);
-        User user = UserService.getUser(username);
+        String username = userService.getUsernameForToken(token);
+        User user = userService.getUser(username);
         if (user == null) {
             System.out.println("Check Offers: User not found for username: " + username);
             response.setStatus(HttpStatus.UNAUTHORIZED);
@@ -765,15 +772,15 @@ public class RequestHandler implements Runnable {
         }
 
         String token = authHeader.substring("Bearer ".length());
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
         try {
-            String username = UserService.getUsernameForToken(token);
-            User user = UserService.getUser(username);
+            String username = userService.getUsernameForToken(token);
+            User user = userService.getUser(username);
             if (user == null) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("User not found");
@@ -820,15 +827,15 @@ public class RequestHandler implements Runnable {
         }
 
         String token = authHeader.substring("Bearer ".length());
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
         try {
-            String username = UserService.getUsernameForToken(token);
-            User user = UserService.getUser(username);
+            String username = userService.getUsernameForToken(token);
+            User user = userService.getUser(username);
             if (user == null) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("User not found");
@@ -930,15 +937,15 @@ public class RequestHandler implements Runnable {
         }
 
         String token = authHeader.substring("Bearer ".length());
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
         try {
-            String username = UserService.getUsernameForToken(token);
-            User user = UserService.getUser(username);
+            String username = userService.getUsernameForToken(token);
+            User user = userService.getUser(username);
             if (user == null) {
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("User not found");
@@ -1131,15 +1138,15 @@ public class RequestHandler implements Runnable {
         }
 
         String token = authHeader.substring("Bearer ".length());
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             return false; // Session not active or token invalid
         }
 
         // Retrieve the username associated with the token
-        String username = UserService.getUsernameForToken(token);
+        String username = userService.getUsernameForToken(token);
 
         // Check if a user is associated with the username
-        return UserService.getUser(username) != null;
+        return userService.getUser(username) != null;
     }
 
 
@@ -1161,15 +1168,15 @@ public class RequestHandler implements Runnable {
         String token = authHeader.substring("Bearer ".length());
 
         // Check if the token is active (i.e., the session is active)
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             return false;
         }
 
         // Retrieve the username associated with the token
-        String username = UserService.getUsernameForToken(token);
+        String username = userService.getUsernameForToken(token);
 
         // Check if a user is associated with the username
-        return UserService.getUser(username) != null;
+        return userService.getUser(username) != null;
     }
     private HttpResponse handleEditProfileRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
@@ -1189,12 +1196,12 @@ public class RequestHandler implements Runnable {
                 return response;
             }
 
-            String username = UserService.getUsernameForToken(request.getHeaders().get("Authorization").substring("Bearer ".length()));
-            User user = UserService.getUser(username);
+            String username = userService.getUsernameForToken(request.getHeaders().get("Authorization").substring("Bearer ".length()));
+            User user = userService.getUser(username);
             // Perform the profile update operations
             if (editRequest.getNewUsername() != null) {
                 // Update username operation
-                try (Connection conn = DatabaseConnector.connect()) {
+                try (Connection conn = databaseConnector.connect()) {
                     // Check if the new username is already taken
                     PreparedStatement checkStmt = conn.prepareStatement("SELECT * FROM \"users\" WHERE username = ?");
                     checkStmt.setString(1, editRequest.getNewUsername());
@@ -1215,7 +1222,7 @@ public class RequestHandler implements Runnable {
 
             if (editRequest.getNewPassword() != null) {
                 // Update password operation
-                try (Connection conn = DatabaseConnector.connect()) {
+                try (Connection conn = databaseConnector.connect()) {
                     String hashedPassword = PasswordUtil.hashPassword(editRequest.getNewPassword());
 
                     // Update the password in the database
@@ -1229,7 +1236,7 @@ public class RequestHandler implements Runnable {
             response.setStatus(HttpStatus.OK);
             response.setBody("Profile can be updated");
             user.setCanChangeCredentials(true);
-            UserService.updateUser(user);
+            userService.updateUser(user);
         } catch (Exception e) {
             e.printStackTrace();
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -1256,8 +1263,8 @@ public class RequestHandler implements Runnable {
                 return response;
             }
 
-            String username = UserService.getUsernameForToken(request.getHeaders().get("Authorization").substring("Bearer ".length()));
-            User user = UserService.getUser(username);
+            String username = userService.getUsernameForToken(request.getHeaders().get("Authorization").substring("Bearer ".length()));
+            User user = userService.getUser(username);
             // Check if the user is allowed to change credentials
             if (!user.canChangeCredentials()) {
                 return unauthorizedResponse();
@@ -1272,7 +1279,7 @@ public class RequestHandler implements Runnable {
             }
 
             // Update the password in the database
-            try (Connection conn = DatabaseConnector.connect()) {
+            try (Connection conn = databaseConnector.connect()) {
                 PreparedStatement updateStmt = conn.prepareStatement("UPDATE \"users\" SET password = ? WHERE username = ?");
                 updateStmt.setString(1, newHashedPassword);
                 updateStmt.setString(2, username);
@@ -1283,7 +1290,7 @@ public class RequestHandler implements Runnable {
             response.setStatus(HttpStatus.OK);
             response.setBody("Password changed successfully");
             user.setCanChangeCredentials(false);
-            UserService.updateUser(user);
+            userService.updateUser(user);
         } catch (SQLException e) {
             e.printStackTrace();
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -1311,14 +1318,14 @@ public class RequestHandler implements Runnable {
 
             // Extract username from the token
             String token = request.getHeaders().get("Authorization").substring("Bearer ".length());
-            String currentUsername = UserService.getUsernameForToken(token);
-            User user = UserService.getUser(currentUsername);
+            String currentUsername = userService.getUsernameForToken(token);
+            User user = userService.getUser(currentUsername);
             // Check if the user is allowed to change credentials
             if (!user.canChangeCredentials()) {
                 return unauthorizedResponse();
             }
             // Update the username
-            try (Connection conn = DatabaseConnector.connect()) {
+            try (Connection conn = databaseConnector.connect()) {
                 // Check if the new username is already in use
                 PreparedStatement checkStmt = conn.prepareStatement("SELECT * FROM \"users\" WHERE username = ?");
                 checkStmt.setString(1, changeRequest.getNewUsername());
@@ -1336,12 +1343,12 @@ public class RequestHandler implements Runnable {
                 updateStmt.executeUpdate();
 
                 // Update username in the UserService
-                UserService.updateUsername(currentUsername, changeRequest.getNewUsername());
+                userService.updateUsername(currentUsername, changeRequest.getNewUsername());
 
                 response.setStatus(HttpStatus.OK);
                 response.setBody("Username updated successfully");
                 user.setCanChangeCredentials(false);
-                UserService.updateUser(user);
+                userService.updateUser(user);
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -1361,14 +1368,14 @@ public class RequestHandler implements Runnable {
         }
 
         String token = authHeader.substring("Bearer ".length());
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
-        String username = UserService.getUsernameForToken(token);
-        User user = UserService.getUser(username);
+        String username = userService.getUsernameForToken(token);
+        User user = userService.getUser(username);
         if (user == null || user.getUserStats() == null) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("User or user statistics not found");
@@ -1390,7 +1397,7 @@ public class RequestHandler implements Runnable {
     private HttpResponse handleShowScoreboardRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
 
-        try (Connection conn = DatabaseConnector.connect()) {
+        try (Connection conn = databaseConnector.connect()) {
             // SQL query to fetch and sort user statistics
             String sql = "SELECT username, total_wins, total_losses, total_draws, elo_rating FROM user_statistics ORDER BY elo_rating DESC";
             PreparedStatement stmt = conn.prepareStatement(sql);
@@ -1430,14 +1437,14 @@ public class RequestHandler implements Runnable {
         }
 
         String token = authHeader.substring("Bearer ".length());
-        if (!UserService.isActiveSession(token)) {
+        if (!userService.isActiveSession(token)) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
-        String username = UserService.getUsernameForToken(token);
-        User user = UserService.getUser(username);
+        String username = userService.getUsernameForToken(token);
+        User user = userService.getUser(username);
         if (user == null) {
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("User not found");

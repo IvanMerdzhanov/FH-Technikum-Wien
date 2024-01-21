@@ -13,7 +13,6 @@ public class User {
     List<Trading> offers;
     private boolean canChangeCredentials;
     private UserStats userStats;
-    //private String token; ОЩЕ НЕ ЗНАМ КАКВО Е ТОВА
 
 
     // Constructor

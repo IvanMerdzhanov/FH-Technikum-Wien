@@ -4,7 +4,7 @@ import mtcg.models.Card;
 import mtcg.models.ElementType;
 import mtcg.models.MonsterCard;
 import mtcg.models.SpellCard;
-import mtcg.server.database.DatabaseConnector;
+import mtcg.server.database.*;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -15,12 +15,19 @@ import java.util.List;
 import java.util.UUID;
 
 public class PackageService {
-    public static List<Card> getPackageCards() {
+    private final DatabaseConnector databaseConnector;
+
+    // Constructor that accepts a DatabaseConnector
+    public PackageService(DatabaseConnector databaseConnector) {
+        this.databaseConnector = databaseConnector;
+    }
+
+    public List<Card> getPackageCards() {
         List<Card> cards = new ArrayList<>();
         String query = "SELECT * FROM cards WHERE taken = false ORDER BY RANDOM() LIMIT 5"; // Get 5 random cards
         String updateQuery = "UPDATE cards SET taken = true WHERE card_id = ?"; // Query to mark the card as taken
 
-        try (Connection conn = DatabaseConnector.connect();
+        try (Connection conn = databaseConnector.connect(); // Use the DatabaseConnector field
              PreparedStatement stmt = conn.prepareStatement(query);
              ResultSet rs = stmt.executeQuery()) {
 
@@ -31,7 +38,7 @@ public class PackageService {
                 // Mark the card as taken
                 try (PreparedStatement updateStmt = conn.prepareStatement(updateQuery)) {
                     updateStmt.setObject(1, card.getId());
-                    int rowsUpdated = updateStmt.executeUpdate();
+                    updateStmt.executeUpdate();
                 }
             }
         } catch (SQLException e) {
@@ -40,8 +47,6 @@ public class PackageService {
         }
         return cards;
     }
-
-
     private static Card createCardFromResultSet(ResultSet rs) throws SQLException {
         UUID id = UUID.fromString(rs.getString("card_id"));
         double damage = rs.getDouble("damage");
@@ -59,27 +64,26 @@ public class PackageService {
             throw new SQLException("Unknown card type: " + cardType);
         }
     }
-    public static void setCardAsNotTaken(UUID cardId) {
+    public void setCardAsNotTaken(UUID cardId) {
         String updateQuery = "UPDATE cards SET taken = false WHERE card_id = ?";
-        try (Connection conn = DatabaseConnector.connect();
+        try (Connection conn = databaseConnector.connect();
              PreparedStatement updateStmt = conn.prepareStatement(updateQuery)) {
 
             updateStmt.setObject(1, cardId);
             updateStmt.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
-            // Handle exceptions, maybe log them or throw a custom exception
+            // Handle exceptions
         }
     }
 
-    public static Card getCardById(UUID cardId) {
+    public Card getCardById(UUID cardId) {
         String query = "SELECT * FROM cards WHERE card_id = ?";
-        try (Connection conn = DatabaseConnector.connect();
+        try (Connection conn = databaseConnector.connect();
              PreparedStatement stmt = conn.prepareStatement(query)) {
 
             stmt.setObject(1, cardId);
             ResultSet rs = stmt.executeQuery();
-
             if (rs.next()) {
                 return createCardFromResultSet(rs);
             } else {
@@ -87,9 +91,7 @@ public class PackageService {
             }
         } catch (SQLException e) {
             e.printStackTrace();
-            // Handle exceptions, maybe log them or throw a custom exception
             return null;
         }
     }
-
 }

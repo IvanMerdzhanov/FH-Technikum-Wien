@@ -1,6 +1,8 @@
 package mtcg.server.core;
 
 import mtcg.server.handlers.RequestHandler;
+import mtcg.server.database.*;
+import mtcg.services.IUserService;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -9,9 +11,11 @@ import java.net.Socket;
 public class Server {
 
     private int port;
+    private DatabaseConnector databaseConnector; // Add a DatabaseConnector field
 
     public Server(int port) {
         this.port = port;
+        this.databaseConnector = new DatabaseConnectorImpl(); // Instantiate DatabaseConnectorImpl
     }
 
     public void start() {
@@ -23,8 +27,8 @@ public class Server {
                     Socket clientSocket = serverSocket.accept();
                     System.out.println("New client connected");
 
-                    // Handle client connection in a separate thread
-                    new ClientHandler(clientSocket).start();
+                    // Pass the DatabaseConnector to the ClientHandler
+                    new ClientHandler(clientSocket, databaseConnector).start();
 
                 } catch (IOException e) {
                     System.out.println("I/O error: " + e.getMessage());
@@ -35,20 +39,22 @@ public class Server {
             ex.printStackTrace();
         }
     }
-
 }
 
 class ClientHandler extends Thread {
     private Socket socket;
+    private DatabaseConnector databaseConnector; // Add a DatabaseConnector field
+    private IUserService userService;
 
-    public ClientHandler(Socket socket) {
+    public ClientHandler(Socket socket, DatabaseConnector databaseConnector) {
         this.socket = socket;
+        this.databaseConnector = databaseConnector; // Initialize the DatabaseConnector field
     }
 
     public void run() {
         try {
-            // Initialize RequestHandler with the client's socket
-            RequestHandler requestHandler = new RequestHandler(socket);
+            // Pass the DatabaseConnector to the RequestHandler
+            RequestHandler requestHandler = new RequestHandler(socket, databaseConnector, userService);
 
             // Let RequestHandler process the request
             requestHandler.run();
