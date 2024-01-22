@@ -490,7 +490,11 @@ public class RequestHandler implements Runnable {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");
 
+        System.out.println("Received handleGetPackageRequest");
+        System.out.println("Authorization Header: " + authHeader);
+
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            System.out.println("Authorization header is invalid or missing");
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
@@ -498,6 +502,7 @@ public class RequestHandler implements Runnable {
 
         // Extract the token from the header
         String token = authHeader.substring("Bearer ".length());
+        System.out.println("Extracted Token: " + token);
 
         if (!userService.isActiveSession(token)) {
             System.out.println("Token invalid or missing for token: " + token);
@@ -507,6 +512,7 @@ public class RequestHandler implements Runnable {
         }
 
         String username = userService.getUsernameForToken(token);
+        System.out.println("Username obtained for token: " + username);
 
         User user = userService.getUser(username);
 
@@ -525,17 +531,21 @@ public class RequestHandler implements Runnable {
             return response;
         }
 
+        System.out.println("Processing coin spend for user: " + username);
         user.spendCoins();
 
         List<Card> packageCards = packageService.getPackageCards();
+        System.out.println("Number of cards in package: " + packageCards.size());
 
         user.getStack().addAll(packageCards);
         userService.updateUser(user);
 
+        System.out.println("Package acquired successfully for user: " + username);
         response.setStatus(HttpStatus.OK);
         response.setBody("Package acquired successfully");
         return response;
     }
+
     private HttpResponse handleShowMyCardsRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");

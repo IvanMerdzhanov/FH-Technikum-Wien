@@ -259,6 +259,54 @@ class RequestHandlerTest {
         // Verify the response
         String response = outputCapture.toString();
         System.out.println("Response for logout: " + response);
-        
+
     }
+    @Test
+    void testRequestPackageWithSufficientCoins() throws Exception {
+        // Setup HTTP request for getpackage with sufficient coins
+        String httpRequest = "POST /getpackage HTTP/1.1\r\n" +
+                "Authorization: Bearer validToken\r\n" +
+                "\r\n";
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("newUser");
+        User mockUser = mock(User.class);
+        when(mockUser.getCoins()).thenReturn(5); // Sufficient coins
+        when(mockUserService.getUser("newUser")).thenReturn(mockUser);
+
+        // Mock package service behavior
+        when(mockPackageService.getPackageCards()).thenReturn(new ArrayList<>()); // Mock package cards
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        assertTrue(response.contains("Package acquired successfully"), "Expected response to indicate successful package acquisition");
+    }
+    @Test
+    void testRequestPackageWithInsufficientCoins() throws Exception {
+        // Setup HTTP request for getpackage with insufficient coins
+        String httpRequest = "POST /getpackage HTTP/1.1\r\n" +
+                "Authorization: Bearer validToken\r\n" +
+                "\r\n";
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("newUser");
+        User mockUser = mock(User.class);
+        when(mockUser.getCoins()).thenReturn(4); // Insufficient coins
+        when(mockUserService.getUser("newUser")).thenReturn(mockUser);
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        assertTrue(response.contains("Insufficient coins"), "Expected response to indicate insufficient coins for package acquisition");
+    }
+
 }
