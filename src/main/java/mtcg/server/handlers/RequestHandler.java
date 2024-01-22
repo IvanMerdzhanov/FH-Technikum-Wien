@@ -1337,10 +1337,12 @@ public class RequestHandler implements Runnable {
     }
     private HttpResponse handleEditProfileRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
+        System.out.println("Received handleEditProfileRequest");
 
         // Check if the user is authenticated
         boolean isAuthenticated = isAuthenticated(request);
         if (!isAuthenticated) {
+            System.out.println("User is not authenticated");
             return unauthorizedResponse(); // Return a response indicating unauthorized access
         }
 
@@ -1348,22 +1350,34 @@ public class RequestHandler implements Runnable {
             // Deserialize the edit profile request
             EditProfileRequest editRequest = JsonSerializer.deserialize(request.getBody(), EditProfileRequest.class);
             if (editRequest == null) {
+                System.out.println("Failed to deserialize edit profile request");
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid edit profile data");
                 return response;
             }
 
-            String username = userService.getUsernameForToken(request.getHeaders().get("Authorization").substring("Bearer ".length()));
+            String token = request.getHeaders().get("Authorization").substring("Bearer ".length());
+            String username = userService.getUsernameForToken(token);
+            System.out.println("Username obtained from token: " + username);
+
             User user = userService.getUser(username);
+            if (user == null) {
+                System.out.println("User not found: " + username);
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("User not found");
+                return response;
+            }
+
             // Perform the profile update operations
             if (editRequest.getNewUsername() != null) {
-                // Update username operation
+                System.out.println("Updating username for user: " + username);
                 try (Connection conn = databaseConnector.connect()) {
                     // Check if the new username is already taken
                     PreparedStatement checkStmt = conn.prepareStatement("SELECT * FROM \"users\" WHERE username = ?");
                     checkStmt.setString(1, editRequest.getNewUsername());
                     ResultSet rs = checkStmt.executeQuery();
                     if (rs.next()) {
+                        System.out.println("New username already taken: " + editRequest.getNewUsername());
                         response.setStatus(HttpStatus.BAD_REQUEST);
                         response.setBody("New username already taken");
                         return response;
@@ -1374,11 +1388,12 @@ public class RequestHandler implements Runnable {
                     updateStmt.setString(1, editRequest.getNewUsername());
                     updateStmt.setString(2, username); // username from the token
                     updateStmt.executeUpdate();
+                    System.out.println("Username updated in database");
                 }
             }
 
             if (editRequest.getNewPassword() != null) {
-                // Update password operation
+                System.out.println("Updating password for user: " + username);
                 try (Connection conn = databaseConnector.connect()) {
                     String hashedPassword = PasswordUtil.hashPassword(editRequest.getNewPassword());
 
@@ -1387,27 +1402,34 @@ public class RequestHandler implements Runnable {
                     updateStmt.setString(1, hashedPassword);
                     updateStmt.setString(2, username); // username from the token
                     updateStmt.executeUpdate();
+                    System.out.println("Password updated in database");
                 }
             }
+
             // Set success response
             response.setStatus(HttpStatus.OK);
-            response.setBody("Profile can be updated");
+            response.setBody("Profile updated successfully");
             user.setCanChangeCredentials(true);
             userService.updateUser(user);
+            System.out.println("User profile updated successfully: " + username);
         } catch (Exception e) {
             e.printStackTrace();
+            System.out.println("Error processing edit profile request: " + e.getMessage());
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Error processing edit profile request");
         }
 
         return response;
     }
+
     private HttpResponse handleChangePasswordRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
+        System.out.println("Received handleChangePasswordRequest");
 
         // Extract the token and check if the user is authenticated
         boolean isAuthenticated = isAuthenticated(request);
         if (!isAuthenticated) {
+            System.out.println("User authentication failed");
             return unauthorizedResponse(); // Return a response indicating unauthorized access
         }
 
@@ -1415,21 +1437,27 @@ public class RequestHandler implements Runnable {
             // Deserialize the change password request
             ChangePasswordRequest changePasswordRequest = JsonSerializer.deserialize(request.getBody(), ChangePasswordRequest.class);
             if (changePasswordRequest == null) {
+                System.out.println("Deserialization of ChangePasswordRequest failed");
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid change password data");
                 return response;
             }
 
             String username = userService.getUsernameForToken(request.getHeaders().get("Authorization").substring("Bearer ".length()));
+            System.out.println("Username extracted: " + username);
             User user = userService.getUser(username);
+
             // Check if the user is allowed to change credentials
             if (!user.canChangeCredentials()) {
+                System.out.println("User " + username + " is not allowed to change credentials");
                 return unauthorizedResponse();
             }
+
             // Ensure the new password is different from the old password
             String newHashedPassword = PasswordUtil.hashPassword(changePasswordRequest.getNewPassword());
 
             if (PasswordUtil.checkPassword(changePasswordRequest.getNewPassword(), user.getPassword())) {
+                System.out.println("New password is the same as the old password for user: " + username);
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("New password cannot be the same as the old password");
                 return response;
@@ -1440,7 +1468,8 @@ public class RequestHandler implements Runnable {
                 PreparedStatement updateStmt = conn.prepareStatement("UPDATE \"users\" SET password = ? WHERE username = ?");
                 updateStmt.setString(1, newHashedPassword);
                 updateStmt.setString(2, username);
-                updateStmt.executeUpdate();
+                int updatedRows = updateStmt.executeUpdate();
+                System.out.println("Password updated for user: " + username + "; Rows affected: " + updatedRows);
             }
 
             // Set success response
@@ -1448,19 +1477,24 @@ public class RequestHandler implements Runnable {
             response.setBody("Password changed successfully");
             user.setCanChangeCredentials(false);
             userService.updateUser(user);
+            System.out.println("Password change process completed successfully for user: " + username);
         } catch (SQLException e) {
             e.printStackTrace();
+            System.out.println("SQLException occurred: " + e.getMessage());
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Error processing change password request");
         }
 
         return response;
     }
-    private HttpResponse handleChangeUsernameRequest(HttpRequest request) {
+
+    HttpResponse handleChangeUsernameRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
+        System.out.println("Received handleChangeUsernameRequest");
 
         // Check if the user is authenticated
         if (!isAuthenticated(request)) {
+            System.out.println("User is not authenticated");
             return unauthorizedResponse();
         }
 
@@ -1468,6 +1502,7 @@ public class RequestHandler implements Runnable {
             // Deserialize the change username request
             ChangeUsernameRequest changeRequest = JsonSerializer.deserialize(request.getBody(), ChangeUsernameRequest.class);
             if (changeRequest == null || changeRequest.getNewUsername() == null || changeRequest.getNewUsername().isEmpty()) {
+                System.out.println("Invalid or empty new username in request");
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid change username data");
                 return response;
@@ -1476,11 +1511,22 @@ public class RequestHandler implements Runnable {
             // Extract username from the token
             String token = request.getHeaders().get("Authorization").substring("Bearer ".length());
             String currentUsername = userService.getUsernameForToken(token);
+            System.out.println("Current username obtained from token: " + currentUsername);
+
             User user = userService.getUser(currentUsername);
+            if (user == null) {
+                System.out.println("User not found: " + currentUsername);
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("User not found");
+                return response;
+            }
+
             // Check if the user is allowed to change credentials
             if (!user.canChangeCredentials()) {
+                System.out.println("User is not allowed to change credentials");
                 return unauthorizedResponse();
             }
+
             // Update the username
             try (Connection conn = databaseConnector.connect()) {
                 // Check if the new username is already in use
@@ -1488,6 +1534,7 @@ public class RequestHandler implements Runnable {
                 checkStmt.setString(1, changeRequest.getNewUsername());
                 ResultSet rs = checkStmt.executeQuery();
                 if (rs.next()) {
+                    System.out.println("New username already in use: " + changeRequest.getNewUsername());
                     response.setStatus(HttpStatus.BAD_REQUEST);
                     response.setBody("Username already in use");
                     return response;
@@ -1498,6 +1545,7 @@ public class RequestHandler implements Runnable {
                 updateStmt.setString(1, changeRequest.getNewUsername());
                 updateStmt.setString(2, currentUsername);
                 updateStmt.executeUpdate();
+                System.out.println("Username updated in database from " + currentUsername + " to " + changeRequest.getNewUsername());
 
                 // Update username in the UserService
                 userService.updateUsername(currentUsername, changeRequest.getNewUsername());
@@ -1509,11 +1557,13 @@ public class RequestHandler implements Runnable {
             }
         } catch (SQLException e) {
             e.printStackTrace();
+            System.out.println("SQLException occurred: " + e.getMessage());
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Error processing change username request");
         }
         return response;
     }
+
     private HttpResponse handleShowMyRecordRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");

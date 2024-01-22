@@ -1,6 +1,7 @@
 package mtcg.server.handlers;
 
 import mtcg.models.*;
+import mtcg.server.http.HttpRequest;
 import mtcg.services.IPackageService;
 import mtcg.services.IUserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,10 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -630,6 +628,53 @@ class RequestHandlerTest {
         String response = outputCapture.toString();
         assertTrue(response.contains("Trade offer declined successfully"), "Expected response to indicate successful decline of trade offer");
         assertTrue(mockUser.getOffers().isEmpty(), "Expected the offer list to be empty after declining the offer");
+    }
+    @Test
+    void testHandleEditProfileRequest_Success() throws Exception {
+        // Setup mock HttpRequest
+        String httpRequest = "POST /changeUsername HTTP/1.1\r\n" +
+                "Authorization: Bearer validToken\r\n\r\n" +
+                "{\"newUsername\": \"newUser\"}";
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("existingUser");
+        User mockUser = new User();
+        mockUser.setCanChangeCredentials(true); // User is allowed to change credentials
+        when(mockUserService.getUser("existingUser")).thenReturn(mockUser);
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        assertTrue(response.contains("Username updated successfully"), "Expected response to indicate successful username update");
+    }
+    @Test
+    void testChangeUserPassword_Success() throws Exception {
+        // Setup mock HttpRequest
+        String newPassword = "password1234";
+        String httpRequest = "POST /changePassword HTTP/1.1\r\n" +
+                "Authorization: Bearer validToken\r\n\r\n" +
+                "{\"newPassword\": \"" + newPassword + "\"}";
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("existingUser");
+        User mockUser = new User();
+        mockUser.setCanChangeCredentials(true); // User is allowed to change credentials
+        String currentHashedPassword = BCrypt.hashpw("currentPassword", BCrypt.gensalt()); // Mocked current hashed password
+        mockUser.setPassword(currentHashedPassword);
+        when(mockUserService.getUser("existingUser")).thenReturn(mockUser);
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        assertTrue(response.contains("Password changed successfully"), "Expected response to indicate successful password change");
     }
 
 }
