@@ -2,6 +2,7 @@ package mtcg.server.core;
 
 import mtcg.server.handlers.RequestHandler;
 import mtcg.server.database.*;
+import mtcg.services.IPackageService;
 import mtcg.services.IUserService;
 
 import java.io.*;
@@ -45,6 +46,7 @@ class ClientHandler extends Thread {
     private Socket socket;
     private DatabaseConnector databaseConnector; // Add a DatabaseConnector field
     private IUserService userService;
+    private IPackageService packageService;
 
     public ClientHandler(Socket socket, DatabaseConnector databaseConnector) {
         this.socket = socket;
@@ -54,7 +56,7 @@ class ClientHandler extends Thread {
     public void run() {
         try {
             // Pass the DatabaseConnector to the RequestHandler
-            RequestHandler requestHandler = new RequestHandler(socket, databaseConnector, userService);
+            RequestHandler requestHandler = new RequestHandler(socket, databaseConnector, userService, packageService);
 
             // Let RequestHandler process the request
             requestHandler.run();

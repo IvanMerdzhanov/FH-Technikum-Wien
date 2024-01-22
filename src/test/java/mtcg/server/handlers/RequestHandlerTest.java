@@ -4,9 +4,11 @@ import mtcg.models.Card;
 import mtcg.models.Deck;
 import mtcg.models.User;
 import mtcg.models.UserStats;
+import mtcg.services.IPackageService;
 import mtcg.services.IUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import mtcg.server.database.DatabaseConnector;
@@ -18,11 +20,13 @@ import org.junit.runner.RunWith;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -42,9 +46,14 @@ class RequestHandlerTest {
     @Mock
     private ResultSet mockResultSet;
     private RequestHandler requestHandler;
+    @Mock
+    private IPackageService mockPackageService;
 
     private ByteArrayOutputStream outputCapture;
     private IUserService mockUserService;
+
+    @Mock private InputStream inputStream;
+    @Mock private OutputStream outputStream;
 
 
     @BeforeEach
@@ -57,6 +66,7 @@ class RequestHandlerTest {
         when(mockPreparedStatement.executeQuery()).thenReturn(mockResultSet);
         when(mockPreparedStatement.executeUpdate()).thenReturn(1); // Mock successful update
         mockUserService = mock(IUserService.class);
+        mockPackageService = mock(IPackageService.class);
 
         outputCapture = new ByteArrayOutputStream();
         when(clientSocket.getOutputStream()).thenReturn(new OutputStream() {
@@ -66,8 +76,12 @@ class RequestHandlerTest {
             }
         });
 
+        // Setup for capturing output stream
+       // when(clientSocket.getOutputStream()).thenReturn(outputStream);
+        // when(clientSocket.getInputStream()).thenReturn(inputStream);
+
         // Create an instance of RequestHandler with mocked dependencies
-        requestHandler = new RequestHandler(clientSocket, databaseConnector, mockUserService);
+        requestHandler = new RequestHandler(clientSocket, databaseConnector, mockUserService, mockPackageService);
 
     }
 
@@ -208,5 +222,43 @@ class RequestHandlerTest {
         String response = outputCapture.toString();
         System.out.println("Response for battle without enough players: " + response);
     }
+    @Test
+    void testHandleLogoutRequest_Success() throws Exception {
+        // Setup
+        when(mockUserService.isActiveSession("token1")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("token1")).thenReturn("newUser1");
 
+        User mockUser1 = mock(User.class);
+        Deck mockDeck1 = mock(Deck.class);
+
+        // Set up mock behavior for the decks
+        List<Card> mockCards1 = new ArrayList<>(); // Add mock cards as needed
+        when(mockDeck1.getCards()).thenReturn(mockCards1);
+
+        // Ensure the mock users return these deck objects
+        when(mockUser1.getDeck()).thenReturn(mockDeck1);
+
+        UserStats mockStats1 = mock(UserStats.class);
+
+        when(mockUser1.getUserStats()).thenReturn(mockStats1);
+
+        // Return the mock User objects when UserService.getUser() is called
+        when(mockUserService.getUser("newUser1")).thenReturn(mockUser1);
+
+        // Mock the HTTP request for starting a battle
+        System.out.println("Setting up HTTP request for logout");
+       // String logoutRequestJson = "{\"tokenPlayerOne\":\"token1\", \"tokenPlayerTwo\":\"token2\"}";
+        String httpRequest = "POST /logout HTTP/1.1\r\n" +
+                "Authorization: Bearer token1\r\n" +
+                "\r\n";
+        setUpHttpRequest(httpRequest);
+
+        System.out.println("Running requestHandler for logout");
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        System.out.println("Response for logout: " + response);
+        
+    }
 }

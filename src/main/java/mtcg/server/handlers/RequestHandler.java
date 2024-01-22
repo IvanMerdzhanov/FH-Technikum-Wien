@@ -8,6 +8,7 @@ import mtcg.server.http.HttpStatus;
 import mtcg.server.models.*;
 import mtcg.server.util.JsonSerializer;
 import mtcg.server.util.PasswordUtil;
+import mtcg.services.IPackageService;
 import mtcg.services.IUserService;
 import mtcg.services.PackageService;
 import mtcg.services.UserService;
@@ -28,15 +29,15 @@ import java.util.stream.Collectors;
 public class RequestHandler implements Runnable {
     private final Socket clientSocket;
     private final DatabaseConnector databaseConnector; // Added field for DatabaseConnector
-    private final PackageService packageService;
+    private final IPackageService packageService;
     private final IUserService userService;
 
 
     // Modified constructor to accept DatabaseConnector and IUserService as parameters
-    public RequestHandler(Socket clientSocket, DatabaseConnector databaseConnector, IUserService userService) {
+    public RequestHandler(Socket clientSocket, DatabaseConnector databaseConnector, IUserService userService, IPackageService packageService) {
         this.clientSocket = clientSocket;
         this.databaseConnector = databaseConnector;
-        this.packageService = new PackageService(databaseConnector);
+        this.packageService = packageService != null ? packageService : new PackageService(databaseConnector);
         this.userService = userService != null ? userService : UserService.getInstance();
     }
 
@@ -169,8 +170,16 @@ public class RequestHandler implements Runnable {
     public HttpResponse handleRegisterRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         try {
+            System.out.println("Entering handleRegisterRequest");
             RegistrationRequest regRequest = JsonSerializer.deserialize(request.getBody(), RegistrationRequest.class);
-            if (regRequest == null || regRequest.getUsername() == null || regRequest.getPassword() == null) {
+
+            if (regRequest == null) {
+                System.out.println("Deserialization resulted in null RegistrationRequest object");
+                response.setStatus(HttpStatus.BAD_REQUEST);
+                response.setBody("Invalid registration data");
+                return response;
+            } else if (regRequest.getUsername() == null || regRequest.getPassword() == null) {
+                System.out.println("Missing username or password in registration request");
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid registration data");
                 return response;
@@ -178,18 +187,22 @@ public class RequestHandler implements Runnable {
 
             String username = regRequest.getUsername();
             String password = regRequest.getPassword();
+            System.out.println("Registration attempt for username: " + username);
 
             try (Connection conn = databaseConnector.connect()) {
                 PreparedStatement checkStmt = conn.prepareStatement("SELECT * FROM \"users\" WHERE username = ?");
                 checkStmt.setString(1, username);
                 ResultSet rs = checkStmt.executeQuery();
+
                 if (rs.next()) {
+                    System.out.println("Username already taken: " + username);
                     response.setStatus(HttpStatus.BAD_REQUEST);
                     response.setBody("Username already taken");
                     return response;
                 }
 
                 String hashedPassword = PasswordUtil.hashPassword(password);
+                System.out.println("Password hashed, proceeding with registration");
 
                 PreparedStatement insertStmt = conn.prepareStatement("INSERT INTO \"users\" (username, password) VALUES (?, ?)");
                 insertStmt.setString(1, username);
@@ -200,16 +213,20 @@ public class RequestHandler implements Runnable {
                 statsStmt.setString(1, username);
                 statsStmt.executeUpdate();
 
+                System.out.println("User registered successfully: " + username);
                 response.setStatus(HttpStatus.OK);
                 response.setBody("User registered successfully");
             }
         } catch (SQLException e) {
+            System.err.println("SQL Exception in handleRegisterRequest: " + e.getMessage());
             e.printStackTrace();
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Registration failed due to server error");
         }
         return response;
     }
+
+
 
     public HttpResponse handleLoginRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
@@ -410,32 +427,48 @@ public class RequestHandler implements Runnable {
     public HttpResponse handleLogoutRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         try {
+            System.out.println("Entering handleLogoutRequest");
+
             String authHeader = request.getHeaders().get("Authorization");
+            System.out.println("Auth header: " + authHeader);
 
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                System.out.println("Invalid or missing token in header");
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid or missing token");
                 return response;
             }
 
             String token = authHeader.substring("Bearer ".length());
+            System.out.println("Token extracted: " + token);
+
             if (!userService.isActiveSession(token)) {
+                System.out.println("Token is not active: " + token);
                 response.setStatus(HttpStatus.BAD_REQUEST);
                 response.setBody("Invalid or missing token");
                 return response;
             }
 
             String username = userService.getUsernameForToken(token);
+            System.out.println("Username for token: " + username);
+
             User user = userService.getUser(username);
             if (user != null) {
+                System.out.println("Releasing user cards for: " + username);
                 releaseUserCards(user);
+                System.out.println("Removing session for token: " + token);
                 userService.removeSession(token);
+                System.out.println("Removing user: " + username);
                 userService.removeUser(user);
+            } else {
+                System.out.println("No user found for username: " + username);
             }
 
             response.setStatus(HttpStatus.OK);
             response.setBody("Logout successful");
+            System.out.println("Logout successful for: " + username);
         } catch (Exception e) {
+            System.err.println("Exception in handleLogoutRequest: " + e.getMessage());
             e.printStackTrace();
             response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
             response.setBody("Logout failed due to server error");
@@ -444,8 +477,10 @@ public class RequestHandler implements Runnable {
     }
 
     private void releaseUserCards(User user) {
+        System.out.println("Releasing cards for user: " + user.getUsername());
         // Logic to set user's cards as not taken
         for (Card card : user.getStack()) {
+            System.out.println("Setting card as not taken: " + card.getId());
             packageService.setCardAsNotTaken(card.getId());
         }
     }

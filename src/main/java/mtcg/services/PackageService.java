@@ -4,7 +4,7 @@ import mtcg.models.Card;
 import mtcg.models.ElementType;
 import mtcg.models.MonsterCard;
 import mtcg.models.SpellCard;
-import mtcg.server.database.*;
+import mtcg.server.database.DatabaseConnector;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -14,14 +14,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-public class PackageService {
+public class PackageService implements IPackageService {
     private final DatabaseConnector databaseConnector;
 
-    // Constructor that accepts a DatabaseConnector
     public PackageService(DatabaseConnector databaseConnector) {
         this.databaseConnector = databaseConnector;
     }
 
+    @Override
     public List<Card> getPackageCards() {
         List<Card> cards = new ArrayList<>();
         String query = "SELECT * FROM cards WHERE taken = false ORDER BY RANDOM() LIMIT 5"; // Get 5 random cards
@@ -47,6 +47,7 @@ public class PackageService {
         }
         return cards;
     }
+
     private static Card createCardFromResultSet(ResultSet rs) throws SQLException {
         UUID id = UUID.fromString(rs.getString("card_id"));
         double damage = rs.getDouble("damage");
@@ -64,6 +65,7 @@ public class PackageService {
             throw new SQLException("Unknown card type: " + cardType);
         }
     }
+    @Override
     public void setCardAsNotTaken(UUID cardId) {
         String updateQuery = "UPDATE cards SET taken = false WHERE card_id = ?";
         try (Connection conn = databaseConnector.connect();
@@ -76,7 +78,7 @@ public class PackageService {
             // Handle exceptions
         }
     }
-
+    @Override
     public Card getCardById(UUID cardId) {
         String query = "SELECT * FROM cards WHERE card_id = ?";
         try (Connection conn = databaseConnector.connect();
