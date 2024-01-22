@@ -142,7 +142,7 @@ public class RequestHandler implements Runnable {
         return response;
     }
 
-    private HttpResponse handleEndGameRequest(HttpRequest request) {
+    HttpResponse handleEndGameRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
 
         // Clear all users and active sessions

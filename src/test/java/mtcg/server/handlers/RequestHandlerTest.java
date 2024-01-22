@@ -2,6 +2,7 @@ package mtcg.server.handlers;
 
 import mtcg.models.*;
 import mtcg.server.http.HttpRequest;
+import mtcg.server.http.HttpResponse;
 import mtcg.services.IPackageService;
 import mtcg.services.IUserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -675,6 +676,24 @@ class RequestHandlerTest {
         // Verify the response
         String response = outputCapture.toString();
         assertTrue(response.contains("Password changed successfully"), "Expected response to indicate successful password change");
+    }
+
+    @Test
+    void testHandleEndGameRequestAndClearSessions() throws Exception {
+        // Setup HTTP request for ending the game
+        String httpRequest = "POST /endgame HTTP/1.1\r\n\r\n";
+        setUpHttpRequest(httpRequest);
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        assertTrue(response.contains("HTTP/1.1 200 OK"), "Expected HTTP status 200 OK in the response");
+        assertTrue(response.contains("Game ended successfully"), "Expected message about successful game end in the response");
+
+        // Verify that the userService cleared all sessions
+        verify(mockUserService).clearAllUsersAndSessions();
     }
 
 }
