@@ -1,9 +1,6 @@
 package mtcg.server.handlers;
 
-import mtcg.models.Card;
-import mtcg.models.Deck;
-import mtcg.models.User;
-import mtcg.models.UserStats;
+import mtcg.models.*;
 import mtcg.services.IPackageService;
 import mtcg.services.IUserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -453,6 +450,186 @@ class RequestHandlerTest {
         // Verify wallet response
         String walletResponse = outputCapture.toString();
         assertTrue(walletResponse.contains("Coins: 5"), "Expected wallet response to reflect updated coin balance after transaction");
+    }
+    @Test
+    void testShowUserRecordAfterBattles() throws Exception {
+        // Setup HTTP request for showing user record
+        String httpRequest = "GET /showRecord HTTP/1.1\r\n" +
+                "Authorization: Bearer validToken\r\n" +
+                "\r\n";
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("newUser");
+
+        // Assuming the constructor of UserStats takes four arguments
+        UserStats mockStats = new UserStats(10, 5, 2, 120); // Wins, Losses, Draws, ELO
+
+        User mockUser = mock(User.class);
+        when(mockUser.getUserStats()).thenReturn(mockStats);
+        when(mockUserService.getUser("newUser")).thenReturn(mockUser);
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        assertTrue(response.contains("Record for newUser"));
+        assertTrue(response.contains("Wins: 10"));
+        assertTrue(response.contains("Losses: 5"));
+        assertTrue(response.contains("Draws: 2"));
+        assertTrue(response.contains("ELO Rating: 120"), "Expected response to contain user battle statistics");
+    }
+    @Test
+    void testHandleShowScoreboardRequest() throws Exception {
+        // Mock the database behavior
+        when(databaseConnector.connect()).thenReturn(mockConnection);
+        when(mockConnection.prepareStatement(anyString())).thenReturn(mockPreparedStatement);
+        when(mockPreparedStatement.executeQuery()).thenReturn(mockResultSet);
+
+        // Set up mock ResultSet data
+        when(mockResultSet.next()).thenReturn(true, true, false); // Two rows of data, then end
+        when(mockResultSet.getString("username")).thenReturn("User1", "User2");
+        when(mockResultSet.getInt("total_wins")).thenReturn(5, 3);
+        when(mockResultSet.getInt("total_losses")).thenReturn(2, 4);
+        when(mockResultSet.getInt("total_draws")).thenReturn(1, 1);
+        when(mockResultSet.getInt("elo_rating")).thenReturn(150, 140);
+
+        // Setup HTTP request for the scoreboard
+        String httpRequest = "POST /scoreboard HTTP/1.1\r\n\r\n";
+        setUpHttpRequest(httpRequest);
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+         System.out.println(response);
+        assertTrue(response.contains("User1") && response.contains("User2"), "Expected response to contain scoreboard data");
+        assertTrue(response.contains("150") && response.contains("140"), "Expected response to contain ELO ratings");
+    }
+
+    @Test
+    void testCreateCardForCardTradeOffer() throws Exception {
+        // Setup mock HttpRequest
+        //!!!THE INDEX SHOULD BE +1 BECAUSE OF THe DECREMENTION IN THE FUNCTION!!!
+        String httpRequest = "POST /createTradeOffer HTTP/1.1\r\nAuthorization: Bearer validToken\r\n\r\n" +
+                "{\"offeringUsername\": \"newUser1\", \"receivingUsername\": \"newUser2\", \"offeredCardIndex\": 2, \"requestedType\": \"Spell\", \"minimumDamage\": 70, \"typeOfOffer\": \"card-for-card\"}";
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        User mockOfferingUser = mock(User.class);
+        User mockReceivingUser = mock(User.class);
+
+        // Create a mock stack of cards
+        List<Card> mockStack = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            mockStack.add(mock(Card.class));
+        }
+
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("newUser1");
+        when(mockUserService.getUser("newUser1")).thenReturn(mockOfferingUser);
+        when(mockUserService.getUser("newUser2")).thenReturn(mockReceivingUser);
+        when(mockReceivingUser.getOffers()).thenReturn(new ArrayList<>());
+
+        when(mockOfferingUser.getUsername()).thenReturn("newUser1");
+        when(mockOfferingUser.getStack()).thenReturn(mockStack);
+        when(mockOfferingUser.getDeck()).thenReturn(new Deck());
+
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        assertTrue(response.contains("Trade offer created successfully"), "Expected response to indicate successful trade offer creation");
+    }
+    @Test
+    void testCreateCoinsForCardTradeOffer() throws Exception {
+        // Setup mock HttpRequest for a coins-for-card trade offer
+        String httpRequest = "POST /createTradeOffer HTTP/1.1\r\nAuthorization: Bearer validToken\r\n\r\n" +
+                "{\"offeringUsername\": \"newUser1\", \"receivingUsername\": \"newUser2\", \"offeredCoins\": 5, \"requestedType\": \"Any\", \"minimumDamage\": 50, \"typeOfOffer\": \"coins-for-card\"}";
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        User mockOfferingUser = mock(User.class);
+        User mockReceivingUser = mock(User.class);
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("newUser1");
+        when(mockUserService.getUser("newUser1")).thenReturn(mockOfferingUser);
+        when(mockUserService.getUser("newUser2")).thenReturn(mockReceivingUser);
+        when(mockReceivingUser.getOffers()).thenReturn(new ArrayList<>());
+
+        // Assuming the offering user has enough coins
+        when(mockOfferingUser.getCoins()).thenReturn(10);
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        assertTrue(response.contains("Trade offer created successfully"), "Expected response to indicate successful trade offer creation");
+    }
+    @Test
+    void testAcceptValidTradeOffer() throws Exception {
+        // Setup HTTP request for accepting a trade offer
+        String httpRequest = "POST /acceptOffer HTTP/1.1\r\nAuthorization: Bearer validToken\r\n\r\n" +
+                "{\"offerIndex\": 1}";
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        User mockUser = mock(User.class);
+        User offeringUser = mock(User.class); // Mock offering user
+        Card offeredCard = mock(Card.class); // Mock offered card
+
+        // Create a mock trading offer with all necessary fields
+        Trading mockTradingOffer = new Trading(offeringUser, mockUser, offeredCard, 5, "Any", 50, "card-for-coins");
+
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("newUser");
+        when(mockUserService.getUser("newUser")).thenReturn(mockUser);
+
+        // Mock the user's coin count to meet the trade requirements
+        when(mockUser.getCoins()).thenReturn(5); // or more
+
+        // Mock the user's offers list to include the mocked trading offer
+        when(mockUser.getOffers()).thenReturn(List.of(mockTradingOffer));
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+       // System.out.println(response);
+        assertTrue(response.contains("Card and coins trade completed successfully"), "Expected response to indicate successful acceptance of trade offer");
+    }
+    @Test
+    void testDeclineTradeOffer() throws Exception {
+        // Setup HTTP request for declining a trade offer
+        String httpRequest = "POST /declineOffer HTTP/1.1\r\nAuthorization: Bearer validToken\r\n\r\n" +
+                "{\"offerIndex\": 1}";
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        User mockUser = mock(User.class);
+        Trading mockTradingOffer = mock(Trading.class); // Mock the trading offer
+        List<Trading> offers = new ArrayList<>();
+        offers.add(mockTradingOffer); // Add mock offer to list
+
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("newUser");
+        when(mockUserService.getUser("newUser")).thenReturn(mockUser);
+        when(mockUser.getOffers()).thenReturn(offers);
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        assertTrue(response.contains("Trade offer declined successfully"), "Expected response to indicate successful decline of trade offer");
+        assertTrue(mockUser.getOffers().isEmpty(), "Expected the offer list to be empty after declining the offer");
     }
 
 }
