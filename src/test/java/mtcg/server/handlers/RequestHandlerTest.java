@@ -25,6 +25,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -307,6 +308,151 @@ class RequestHandlerTest {
         // Verify the response
         String response = outputCapture.toString();
         assertTrue(response.contains("Insufficient coins"), "Expected response to indicate insufficient coins for package acquisition");
+    }
+    @Test
+    void testHandleShowMyCardsRequest_Success() throws Exception {
+        // Set up the specific HTTP request for this test
+        String httpRequest = "GET /showmycards HTTP/1.1\r\nAuthorization: Bearer validToken\r\n\r\n";
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("newUser");
+
+        User mockUser = mock(User.class);
+        Deck mockDeck = mock(Deck.class);
+        List<Card> mockCardList = Arrays.asList(mock(Card.class), mock(Card.class)); // Mock some cards
+        when(mockUser.getStack()).thenReturn(mockCardList);
+        when(mockUser.getDeck()).thenReturn(mockDeck);
+        when(mockDeck.getCards()).thenReturn(mockCardList); // Mock deck cards, adjust as needed
+
+        when(mockUserService.getUser("newUser")).thenReturn(mockUser);
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        assertTrue(response.contains("Stack:"), "Expected response to contain 'Stack:'");
+        assertTrue(response.contains("Deck:"), "Expected response to contain 'Deck:'");
+    }
+    @Test
+    void testSelectCardsForDeckSuccess() throws Exception {
+        // Setup HTTP request for selectCard
+        String selectCardsJson = "{\"cardIndexes\": [1, 2, 3, 5]}";
+        String httpRequest = "POST /selectCard HTTP/1.1\r\n" +
+                "Authorization: Bearer validToken\r\n" +
+                "Content-Length: " + selectCardsJson.getBytes(StandardCharsets.UTF_8).length + "\r\n\r\n" +
+                selectCardsJson;
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("newUser");
+        User mockUser = mock(User.class);
+        when(mockUserService.getUser("newUser")).thenReturn(mockUser);
+
+        Deck mockDeck = mock(Deck.class);
+        when(mockUser.getDeck()).thenReturn(mockDeck);
+
+        // Mock user stack and offers
+        List<Card> mockStack = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            mockStack.add(mock(Card.class));
+        }
+        when(mockUser.getStack()).thenReturn(mockStack);
+
+        when(mockUser.getStack()).thenReturn(mockStack);
+        when(mockUser.getOffers()).thenReturn(new ArrayList<>());
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response
+        String response = outputCapture.toString();
+        assertTrue(response.contains("Cards selected successfully"), "Expected response to indicate successful card selection");
+
+        // Verify the deck manipulation
+        verify(mockDeck).clear();
+        verify(mockDeck, times(4)).addCard(any(Card.class));
+    }
+    @Test
+    void testSelectInvalidCardIndexesForDeck() throws Exception {
+        // Setup HTTP request with invalid card indexes
+        String selectCardsJson = "{\"cardIndexes\": [10, 20]}"; // Assuming these indexes are invalid
+        String httpRequest = "POST /selectCard HTTP/1.1\r\n" +
+                "Authorization: Bearer validToken\r\n" +
+                "Content-Length: " + selectCardsJson.getBytes(StandardCharsets.UTF_8).length + "\r\n\r\n" +
+                selectCardsJson;
+        setUpHttpRequest(httpRequest);
+
+        // Mock user behavior
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("newUser");
+        User mockUser = mock(User.class);
+        when(mockUserService.getUser("newUser")).thenReturn(mockUser);
+
+        Deck mockDeck = mock(Deck.class);
+        when(mockUser.getDeck()).thenReturn(mockDeck);
+
+        // Mock user stack and offers
+        List<Card> mockStack = new ArrayList<>();
+        for (int i = 0; i < 5; i++) { // Assume the user only has 5 cards
+            mockStack.add(mock(Card.class));
+        }
+        when(mockUser.getStack()).thenReturn(mockStack);
+        when(mockUser.getOffers()).thenReturn(new ArrayList<>());
+
+        // Run the RequestHandler
+        requestHandler.run();
+
+        // Verify the response for invalid card index
+        String response = outputCapture.toString();
+        assertTrue(response.contains("Invalid card selection"), "Expected response to indicate invalid card selection");
+
+        // Verify no cards were added to the deck
+        verify(mockDeck, never()).addCard(any(Card.class));
+    }
+    @Test
+    void testViewWalletAfterTransactions() throws Exception {
+        // Simulate the user performing a transaction (e.g., purchasing a package)
+        // Setup HTTP request for package purchase
+        String packageRequest = "POST /getpackage HTTP/1.1\r\n" +
+                "Authorization: Bearer validToken\r\n" +
+                "\r\n";
+        setUpHttpRequest(packageRequest);
+
+        // Mock user behavior for package purchase
+        User mockUser = mock(User.class);
+        when(mockUserService.isActiveSession("validToken")).thenReturn(true);
+        when(mockUserService.getUsernameForToken("validToken")).thenReturn("newUser");
+        when(mockUser.getCoins()).thenReturn(10); // Initial coin balance
+        when(mockUserService.getUser("newUser")).thenReturn(mockUser);
+
+        // Mock package service behavior
+        when(mockPackageService.getPackageCards()).thenReturn(new ArrayList<>());
+
+        // Execute the package purchase request
+        requestHandler.run();
+
+        // Reset output stream for wallet request
+        outputCapture.reset();
+
+        // Setup HTTP request for wallet balance check
+        String walletRequest = "GET /wallet HTTP/1.1\r\n" +
+                "Authorization: Bearer validToken\r\n" +
+                "\r\n";
+        setUpHttpRequest(walletRequest);
+
+        // Mock updated user behavior to reflect coin balance after transaction
+        when(mockUser.getCoins()).thenReturn(5); // Assuming 5 coins are spent
+
+        // Execute the wallet request
+        requestHandler.run();
+
+        // Verify wallet response
+        String walletResponse = outputCapture.toString();
+        assertTrue(walletResponse.contains("Coins: 5"), "Expected wallet response to reflect updated coin balance after transaction");
     }
 
 }

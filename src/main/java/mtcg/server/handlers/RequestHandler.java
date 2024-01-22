@@ -550,34 +550,45 @@ public class RequestHandler implements Runnable {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");
 
+        System.out.println("Received handleShowMyCardsRequest");
+        System.out.println("Authorization Header: " + authHeader);
+
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            System.out.println("Authorization header is invalid or missing");
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
         String token = authHeader.substring("Bearer ".length());
+        System.out.println("Extracted Token: " + token);
+
         if (!userService.isActiveSession(token)) {
+            System.out.println("Token is invalid or session is inactive for token: " + token);
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
         String username = userService.getUsernameForToken(token);
+        System.out.println("Username obtained for token: " + username);
+
         User user = userService.getUser(username);
         if (user == null) {
+            System.out.println("User not found for username: " + username);
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("User not found");
             return response;
         }
 
+        System.out.println("Preparing card list for user: " + username);
         StringBuilder cardList = new StringBuilder();
         Map<Card, Integer> cardIndexes = new HashMap<>();
         int index = 1;
 
-        // Check for empty stack
         cardList.append("Stack:\n");
         if (user.getStack().isEmpty()) {
+            System.out.println("User stack is empty for user: " + username);
             cardList.append("Your stack is empty.\n");
         } else {
             for (Card card : user.getStack()) {
@@ -587,9 +598,9 @@ public class RequestHandler implements Runnable {
             }
         }
 
-        // Check for empty deck
         cardList.append("\nDeck:\n");
         if (user.getDeck().getCards().isEmpty()) {
+            System.out.println("User deck is empty for user: " + username);
             cardList.append("Your deck is empty.\n");
         } else {
             for (Card card : user.getDeck().getCards()) {
@@ -598,10 +609,12 @@ public class RequestHandler implements Runnable {
             }
         }
 
+        System.out.println("Sending card list response for user: " + username);
         response.setStatus(HttpStatus.OK);
         response.setBody(cardList.toString());
         return response;
     }
+
 
     private HttpResponse handleSelectCardRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
@@ -1509,31 +1522,45 @@ public class RequestHandler implements Runnable {
         HttpResponse response = new HttpResponse();
         String authHeader = request.getHeaders().get("Authorization");
 
+        System.out.println("handleWalletRequest: Received request");
+
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            System.out.println("handleWalletRequest: Authorization header is invalid or missing");
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
         String token = authHeader.substring("Bearer ".length());
+        System.out.println("handleWalletRequest: Extracted Token - " + token);
+
         if (!userService.isActiveSession(token)) {
+            System.out.println("handleWalletRequest: Token invalid or not active - " + token);
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("Invalid or missing token");
             return response;
         }
 
         String username = userService.getUsernameForToken(token);
+        System.out.println("handleWalletRequest: Username obtained for token - " + username);
+
         User user = userService.getUser(username);
         if (user == null) {
+            System.out.println("handleWalletRequest: User not found for username - " + username);
             response.setStatus(HttpStatus.UNAUTHORIZED);
             response.setBody("User not found");
             return response;
         }
 
         int userCoins = user.getCoins(); // Retrieve the number of coins the user has
+        System.out.println("handleWalletRequest: User " + username + " has coins - " + userCoins);
+
         response.setStatus(HttpStatus.OK);
         response.setBody("Coins: " + userCoins); // Respond with the number of coins
+        System.out.println("handleWalletRequest: Response sent with user coins");
+
         return response;
     }
+
 
 }
