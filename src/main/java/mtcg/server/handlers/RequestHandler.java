@@ -372,7 +372,7 @@ public class RequestHandler implements Runnable {
 
             // Initiate battle
             Battle battle = new Battle(playerOne, playerTwo);
-            String winner = battle.startBattle(); // This should now return the winner's username
+            String winner = battle.startBattle(); // This now returns just the winner's username
             System.out.println("Battle started between " + usernamePlayerOne + " and " + usernamePlayerTwo);
 
             // Update statistics in the database after the battle
@@ -411,7 +411,6 @@ public class RequestHandler implements Runnable {
         }
     }
 
-
     private void clearTradeOffers(User user) {
         if (user != null && user.getOffers() != null) {
             user.getOffers().clear();
@@ -420,10 +419,11 @@ public class RequestHandler implements Runnable {
     }
     private BattleResponseData compileBattleResults(Battle battle, String winner) {
         BattleResponseData responseData = new BattleResponseData();
-        responseData.setWinner(winner); // Use the winner from the battle directly
-        responseData.setRoundDetails(battle.getRoundResults());
+        responseData.setWinner(winner); // Set the overall battle winner
+        responseData.setRoundDetails(battle.getRoundResults()); // Set the detailed round information
         return responseData;
     }
+
     public HttpResponse handleLogoutRequest(HttpRequest request) {
         HttpResponse response = new HttpResponse();
         try {

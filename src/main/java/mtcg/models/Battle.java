@@ -21,7 +21,11 @@ public class Battle {
     }
 
     public String startBattle() {
+        if (playerOne.getDeck().isEmpty() || playerTwo.getDeck().isEmpty()) {
+            return "Battle cannot start: One of the players has an empty deck.";
+        }
         System.out.println("Battle started between " + playerOne.getUsername() + " and " + playerTwo.getUsername());
+        StringBuilder battleSummary = new StringBuilder();
 
         for (int i = 0; i < 4; i++) {
             System.out.println("Round " + (i + 1) + " starts");
@@ -33,21 +37,23 @@ public class Battle {
                 break;
             }
 
-            // Remove selected cards from each player's deck
             playerOne.getDeck().removeCard(cardOne);
             playerTwo.getDeck().removeCard(cardTwo);
 
             Round round = new Round(playerOne, cardOne, playerTwo, cardTwo);
-            String roundResult = round.executeRound();
-            System.out.println(roundResult);
-            roundResults.add(roundResult);
+            List<String> roundResultsList = round.executeRound();
+            for (String detail : roundResultsList) {
+                System.out.println(detail);
+                roundResults.add(detail);
+                battleSummary.append(detail);
+            }
         }
 
-        // Determine the winner after all rounds are completed
         String winner = determineWinner();
-
+        System.out.println("Overall Battle Winner: " + winner);
         return winner;
     }
+
     private void updateStats(User user, Connection conn, int win, int loss, int draw) throws SQLException {
         System.out.println("!!!Entering updateStats!!!");
         UserStats stats = user.getUserStats();

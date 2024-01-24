@@ -1,4 +1,8 @@
 package mtcg.models;
+
+import java.util.ArrayList;
+import java.util.List;
+
 public class Round {
     private Card playerOneCard;
     private Card playerTwoCard;
@@ -12,55 +16,49 @@ public class Round {
         this.playerTwoCard = playerTwoCard;
     }
 
-    public String executeRound() {
-        // Assuming playerOneCard and playerTwoCard are the cards in this round
+    public List<String> executeRound() {
+        List<String> roundDetails = new ArrayList<>();
         double playerOneDamage = playerOneCard.getDamage();
         double playerTwoDamage = playerTwoCard.getDamage();
 
-        System.out.println(String.format("Player One's card: %s (ID: %s) - Damage: %.0f", playerOneCard.getName(), playerOneCard.getId(), playerOneDamage));
-        System.out.println(String.format("Player Two's card: %s (ID: %s) - Damage: %.0f", playerTwoCard.getName(), playerTwoCard.getId(), playerTwoDamage));
+        roundDetails.add(String.format("Player One's card: %s (ID: %s) - Initial Damage: %.0f", playerOneCard.getName(), playerOneCard.getId(), playerOneDamage));
+        roundDetails.add(String.format("Player Two's card: %s (ID: %s) - Initial Damage: %.0f", playerTwoCard.getName(), playerTwoCard.getId(), playerTwoDamage));
 
-
-        System.out.println(String.format("The fight is between %s - %.0f and %s - %.0f", playerOneCard.getName(), playerOneDamage, playerTwoCard.getName(), playerTwoDamage));
-
-// Apply special rules first
+        // Apply special rules first
         if (specialRuleApplies(playerOneCard, playerTwoCard)) {
-            playerOneDamage = 0; // Adjust damage based on special rules
+            roundDetails.add("Special Rule Applied: " + playerOneCard.getName() + " vs " + playerTwoCard.getName());
+            playerOneDamage = 0;
         }
         if (specialRuleApplies(playerTwoCard, playerOneCard)) {
-            playerTwoDamage = 0; // Adjust damage based on special rules
+            roundDetails.add("Special Rule Applied: " + playerTwoCard.getName() + " vs " + playerOneCard.getName());
+            playerTwoDamage = 0;
         }
 
-// Apply elemental effectiveness only if no special rules were applied
+        // Apply elemental effectiveness only if no special rules were applied
         if (playerOneDamage > 0 && playerTwoDamage > 0) {
             if (playerOneCard instanceof SpellCard || playerTwoCard instanceof SpellCard) {
+                roundDetails.add("Elemental Effectiveness Applied");
                 playerOneDamage = calculateElementalDamage(playerOneCard, playerTwoCard);
                 playerTwoDamage = calculateElementalDamage(playerTwoCard, playerOneCard);
             }
         }
 
+        roundDetails.add(String.format("Adjusted Damages: Player One - %.0f, Player Two - %.0f", playerOneDamage, playerTwoDamage));
 
-        System.out.println(String.format("Now the DAMAGES are %.0f VS %.0f", playerOneDamage, playerTwoDamage));
         // Determine the round winner
-        String roundSummary;
         if (playerOneDamage > playerTwoDamage) {
-            // Player One wins the round
-            roundSummary = String.format("Player 1 wins: %s beats %s", playerOneCard.getName(), playerTwoCard.getName());
+            roundDetails.add(String.format("Player 1 wins: %s beats %s", playerOneCard.getName(), playerTwoCard.getName()));
             transferCardToStack(playerTwo, playerOne, playerTwoCard);
-            System.out.println("Transferring card from Player Two to Player One: " + playerTwoCard.getId());
         } else if (playerTwoDamage > playerOneDamage) {
-            // Player Two wins the round
-            roundSummary = String.format("Player 2 wins: %s beats %s", playerTwoCard.getName(), playerOneCard.getName());
+            roundDetails.add(String.format("Player 2 wins: %s beats %s", playerTwoCard.getName(), playerOneCard.getName()));
             transferCardToStack(playerOne, playerTwo, playerOneCard);
-            System.out.println("Transferring card from Player One to Player Two: " + playerOneCard.getId());
-        }
-        else {
-            // It's a draw
-            roundSummary = "It's a draw between " + playerOneCard.getName() + " and " + playerTwoCard.getName();
+        } else {
+            roundDetails.add("It's a draw between " + playerOneCard.getName() + " and " + playerTwoCard.getName());
         }
 
-        return roundSummary;
+        return roundDetails;
     }
+
 
     private double calculateElementalDamage(Card attackingCard, Card defendingCard) {
         double damage = attackingCard.getDamage();

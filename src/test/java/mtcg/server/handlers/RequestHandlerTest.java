@@ -217,7 +217,7 @@ class RequestHandlerTest {
 
         // Verify the response
         String response = outputCapture.toString();
-        System.out.println("Response for battle without enough players: " + response);
+        System.out.println("Response for battle with enough players: " + response);
     }
     @Test
     void testHandleLogoutRequest_Success() throws Exception {
